@@ -116,7 +116,7 @@ function startNotebookPaper(id){
   const paper=notebookPapersCache.find(p=>p.id===id);if(!paper)return;
   const questions=shuffle(paper.questions).map(item=>({id:crypto.randomUUID(),prompt:item.question,answer:item.correct_answer,options:shuffle(item.options),source:paper.title,subject:paper.subject,reference:`Correct answer: ${item.correct_answer}`}));
   const minutes=Number($('#testTimeLimit').value);
-  activeGeneratedTest={questions,materialNames:[paper.title],remaining:minutes*60};renderActiveGeneratedTest();startGeneratedTimer();
+  activeGeneratedTest={questions,materialNames:[paper.title],remaining:minutes*60,marked:[]};renderActiveGeneratedTest();startGeneratedTimer();
 }
 
 const STOP_WORDS=new Set('about after again against also among because before being between both could does doing during each from further have having into itself more most other over same should some such than that their them then there these they this those through under until very what when where which while whom with would your were will been only upon however therefore thus chapter figure table source india indian'.split(' '));
@@ -149,16 +149,21 @@ function makeQuestionPool(materials){
 
 function renderActiveGeneratedTest(){
   if(!activeGeneratedTest)return;
+  activeGeneratedTest.marked=activeGeneratedTest.marked||[];
   $('#activeTestPanel').hidden=false;
   $('#activeTestTitle').textContent=`${activeGeneratedTest.questions.length}-question material test`;
-  $('#generatedQuestions').innerHTML=activeGeneratedTest.questions.map((q,index)=>`<article class="generated-question"><span class="question-source">${esc(q.subject)} · ${esc(q.source)}</span><h3>${index+1}. ${esc(q.prompt)}</h3><div class="question-options">${q.options.map(option=>`<label class="question-option"><input type="radio" name="generated-${index}" value="${esc(option)}"><span>${esc(option)}</span></label>`).join('')}</div></article>`).join('');
+  $('#generatedQuestions').innerHTML=activeGeneratedTest.questions.map((q,index)=>`<article class="generated-question" id="generated-question-${index}"><div class="question-head"><span class="question-source">${esc(q.subject)} · ${esc(q.source)}</span><button class="mark-review" type="button" data-mark-review="${index}" aria-pressed="false">☆ Mark for review</button></div><h3>${index+1}. ${esc(q.prompt)}</h3><div class="question-options">${q.options.map(option=>`<label class="question-option"><input type="radio" name="generated-${index}" value="${esc(option)}"><span>${esc(option)}</span></label>`).join('')}</div></article>`).join('');
   updateGeneratedProgress();
   $('#activeTestPanel').scrollIntoView({behavior:'smooth',block:'start'});
 }
 function updateGeneratedProgress(){
   if(!activeGeneratedTest)return;
-  const answered=$$('#activeTestForm input[type="radio"]:checked').length;
-  $('#testProgressText').textContent=`${answered}/${activeGeneratedTest.questions.length} answered`;
+  const answeredIndexes=new Set($$('#activeTestForm input[type="radio"]:checked').map(input=>Number(input.name.replace('generated-',''))));
+  const markedIndexes=new Set(activeGeneratedTest.marked||[]),total=activeGeneratedTest.questions.length,answered=answeredIndexes.size;
+  $('#testProgressText').textContent=`${answered}/${total} answered · ${markedIndexes.size} marked`;
+  $('#testAnsweredCount').textContent=answered;$('#testUnansweredCount').textContent=total-answered;$('#testMarkedCount').textContent=markedIndexes.size;
+  $('#questionPalette').innerHTML=activeGeneratedTest.questions.map((_,index)=>`<button type="button" data-jump-question="${index}" class="${answeredIndexes.has(index)?'answered ':''}${markedIndexes.has(index)?'marked':''}" aria-label="Go to question ${index+1}${markedIndexes.has(index)?', marked for review':''}">${index+1}</button>`).join('');
+  $$('.generated-question').forEach((card,index)=>{card.classList.toggle('answered',answeredIndexes.has(index));card.classList.toggle('marked',markedIndexes.has(index));const button=$('[data-mark-review]',card);button.setAttribute('aria-pressed',String(markedIndexes.has(index)));button.textContent=markedIndexes.has(index)?'★ Marked for review':'☆ Mark for review';});
 }
 function drawGeneratedTimer(){
   if(!activeGeneratedTest||!activeGeneratedTest.remaining){$('#testTimer').textContent='Untimed';return;}
@@ -183,7 +188,7 @@ function testAccuracy(test){
 function renderMaterialTestStats(){
   const tests=state.materialTests||[],answered=tests.reduce((n,t)=>n+testAnswered(t),0),correct=tests.reduce((n,t)=>n+(Number(t.correct)||0),0),accuracy=answered?Math.round(correct/answered*100):null,best=tests.length?Math.max(...tests.map(testAccuracy)):null;
   $('#materialTestsTaken').textContent=tests.length;$('#materialAccuracy').textContent=accuracy===null?'—':accuracy+'%';$('#materialBest').textContent=best===null?'—':best+'%';$('#materialQuestions').textContent=answered;$('#generatedBestScore').textContent=best===null?'—':`Best ${best}%`;
-  $('#generatedTestHistory').innerHTML=tests.length?tests.slice().reverse().map(t=>{const score=testAccuracy(t),attempted=testAnswered(t);return `<article class="mock-row material-result"><div><strong>${esc(t.name)}</strong><span>${esc(t.subject)} · ${t.correct}/${attempted} attempted correct · ${t.unattempted} unattempted</span><button class="review-toggle" type="button" data-test-review="${t.id}">Review answers</button></div><div class="score-pill ${score>=70?'good':'needs-work'}">${score}%</div><div class="result-detail">${t.review.map((r,i)=>`<div class="review-line"><b>${i+1}. ${r.correct?'✓':'✗'} ${esc(r.answer)}</b> — ${esc(r.reference)}</div>`).join('')}</div></article>`;}).join(''):'<div class="empty">Your generated test results will appear here.</div>';
+  $('#generatedTestHistory').innerHTML=tests.length?tests.slice().reverse().map(t=>{const score=testAccuracy(t),attempted=testAnswered(t),marked=Number(t.marked)||0;return `<article class="mock-row material-result"><div><strong>${esc(t.name)}</strong><span>${esc(t.subject)} · ${t.correct} correct of ${attempted} attempted · ${t.unattempted} unattempted${marked?` · ${marked} marked`:''}</span><button class="review-toggle" type="button" data-test-review="${t.id}">Review answers</button></div><div class="score-pill ${score>=70?'good':'needs-work'}">${score}%</div><div class="result-detail">${t.review.map((r,i)=>{const skipped=!r.selected,status=skipped?'Skipped':r.correct?'Correct':'Incorrect',symbol=skipped?'—':r.correct?'✓':'✗';return `<div class="review-line ${skipped?'skipped':r.correct?'correct':'incorrect'}"><b>${i+1}. ${symbol} ${status}${r.marked?' · Marked':''}</b><span>Your answer: ${skipped?'Not attempted':esc(r.selected)} · Correct answer: ${esc(r.answer)}</span><small>${esc(r.reference)}</small></div>`;}).join('')}</div></article>`;}).join(''):'<div class="empty">Your generated test results will appear here.</div>';
   const groups={};tests.forEach(t=>{const key=t.subject||'Mixed';groups[key]??={correct:0,answered:0,tests:0};groups[key].correct+=Number(t.correct)||0;groups[key].answered+=testAnswered(t);groups[key].tests++;});
   $('#subjectTestBreakdown').innerHTML=Object.entries(groups).map(([subject,x])=>{const pct=x.answered?Math.round(x.correct/x.answered*100):0;return `<div class="subject-test-row"><strong>${esc(subject)}</strong><div class="bar"><i style="width:${pct}%"></i></div><span>${pct}% · ${x.tests} test${x.tests===1?'':'s'}</span></div>`;}).join('');
 }
@@ -191,10 +196,11 @@ function renderMaterialTestStats(){
 function submitGeneratedTest(auto=false){
   if(!activeGeneratedTest)return;
   clearInterval(generatedTimerId);generatedTimerId=null;
-  const review=activeGeneratedTest.questions.map((q,index)=>{const selected=$(`input[name="generated-${index}"]:checked`)?.value||'';return{answer:q.answer,selected,correct:selected.toLocaleLowerCase()===q.answer.toLocaleLowerCase(),reference:q.reference};});
+  const markedIndexes=new Set(activeGeneratedTest.marked||[]);
+  const review=activeGeneratedTest.questions.map((q,index)=>{const selected=$(`input[name="generated-${index}"]:checked`)?.value||'';return{answer:q.answer,selected,correct:Boolean(selected)&&selected.toLocaleLowerCase()===q.answer.toLocaleLowerCase(),marked:markedIndexes.has(index),reference:q.reference};});
   const correct=review.filter(r=>r.correct).length,total=review.length,unattempted=review.filter(r=>!r.selected).length,answered=total-unattempted,accuracy=answered?Math.round(correct/answered*100):0;
   const subjects=[...new Set(activeGeneratedTest.questions.map(q=>q.subject))];
-  state.materialTests.push({id:crypto.randomUUID(),date:isoDay(),name:activeGeneratedTest.materialNames.length===1?activeGeneratedTest.materialNames[0]:'Mixed material test',subject:subjects.length===1?subjects[0]:'Mixed',correct,total,unattempted,accuracy,review});
+  state.materialTests.push({id:crypto.randomUUID(),date:isoDay(),name:activeGeneratedTest.materialNames.length===1?activeGeneratedTest.materialNames[0]:'Mixed material test',subject:subjects.length===1?subjects[0]:'Mixed',correct,total,unattempted,marked:markedIndexes.size,accuracy,review});
   activeGeneratedTest=null;$('#activeTestPanel').hidden=true;save();toast(auto?`Time is up: ${accuracy}% accuracy.`:`Test submitted: ${accuracy}% accuracy.`);
 }
 
@@ -357,10 +363,16 @@ $('#randomTestForm').addEventListener('submit',async e=>{
   const questions=pool.slice(0,Math.min(requested,pool.length));
   if(questions.length<requested)toast(`Created ${questions.length} questions from the available text.`);
   const minutes=Number($('#testTimeLimit').value);
-  activeGeneratedTest={questions,materialNames:selected.map(m=>m.name),remaining:minutes*60};renderActiveGeneratedTest();startGeneratedTimer();
+  activeGeneratedTest={questions,materialNames:selected.map(m=>m.name),remaining:minutes*60,marked:[]};renderActiveGeneratedTest();startGeneratedTimer();
 });
 
 $('#activeTestForm').addEventListener('change',updateGeneratedProgress);
+$('#activeTestForm').addEventListener('click',e=>{
+  const mark=e.target.closest('[data-mark-review]');
+  if(mark&&activeGeneratedTest){const index=Number(mark.dataset.markReview),marked=new Set(activeGeneratedTest.marked||[]);marked.has(index)?marked.delete(index):marked.add(index);activeGeneratedTest.marked=[...marked];updateGeneratedProgress();return;}
+  const jump=e.target.closest('[data-jump-question]');
+  if(jump)$('#generated-question-'+jump.dataset.jumpQuestion)?.scrollIntoView({behavior:'smooth',block:'center'});
+});
 $('#activeTestForm').addEventListener('submit',e=>{e.preventDefault();submitGeneratedTest(false);});
 $('#cancelGeneratedTest').addEventListener('click',()=>{if(!activeGeneratedTest||confirm('Cancel this test? The current answers will not be saved.')){clearInterval(generatedTimerId);generatedTimerId=null;activeGeneratedTest=null;$('#activeTestPanel').hidden=true;toast('Test cancelled.');}});
 

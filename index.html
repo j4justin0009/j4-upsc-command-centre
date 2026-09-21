@@ -7,7 +7,7 @@
   <meta name="description" content="J4's local-first UPSC 2028 preparation dashboard.">
   <title>J4 UPSC Command Centre</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <link rel="stylesheet" href="styles.css?v=2.2">
+  <link rel="stylesheet" href="styles.css?v=2.3">
 </head>
 <body>
   <aside class="sidebar">
@@ -174,7 +174,15 @@
 
       <article class="panel active-test-panel" id="activeTestPanel" hidden>
         <div class="panel-head test-session-head"><div><p class="eyebrow">Test in progress</p><h2 id="activeTestTitle">Random material test</h2></div><div class="test-session-meta"><span id="testProgressText">0/0 answered</span><strong id="testTimer">Untimed</strong></div></div>
-        <form id="activeTestForm"><div id="generatedQuestions" class="generated-questions"></div><div class="test-submit-row"><button class="secondary" type="button" id="cancelGeneratedTest">Cancel test</button><button class="primary" type="submit">Submit test</button></div></form>
+        <form id="activeTestForm">
+          <div class="test-navigator" aria-label="Question navigator">
+            <div class="test-counts"><span><b id="testAnsweredCount">0</b> Answered</span><span><b id="testUnansweredCount">0</b> Unanswered</span><span><b id="testMarkedCount">0</b> Marked</span></div>
+            <div id="questionPalette" class="question-palette"></div>
+            <div class="palette-legend"><span><i class="answered"></i>Answered</span><span><i class="marked"></i>Marked</span><span><i></i>Not answered</span></div>
+          </div>
+          <div id="generatedQuestions" class="generated-questions"></div>
+          <div class="test-submit-row"><button class="secondary" type="button" id="cancelGeneratedTest">Cancel test</button><button class="primary" type="submit">Submit test</button></div>
+        </form>
       </article>
 
       <div class="grid test-results-grid">
@@ -215,6 +223,6 @@
   </nav>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=2.4"></script>
+  <script src="app.js?v=2.5"></script>
 </body>
 </html>

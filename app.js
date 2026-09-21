@@ -55,9 +55,9 @@ function normalizeMaterialText(text){return text.replace(/\u0000/g,' ').replace(
 async function extractMaterialText(file){
   if(file.size>6*1024*1024)throw new Error(`${file.name} is larger than 6 MB.`);
   if(file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf')){
-    if(!window.pdfjsLib)throw new Error('PDF reader could not load. Try again online or upload a TXT file.');
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    const pdf=await window.pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+    const pdfjsLib=await import('./pdf.min.mjs?v=1');
+    pdfjsLib.GlobalWorkerOptions.workerSrc=new URL('pdf.worker.min.mjs?v=1',location.href).href;
+    const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
     const pages=[];
     for(let pageNo=1;pageNo<=pdf.numPages;pageNo++){const page=await pdf.getPage(pageNo);const content=await page.getTextContent();pages.push(content.items.map(item=>item.str).join(' '));}
     return normalizeMaterialText(pages.join('\n'));

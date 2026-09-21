@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101a35">
+  <meta name="description" content="J4's private UPSC 2028 preparation dashboard.">
+  <title>J4 UPSC Command Centre</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">J4</span>
+      <div><strong>Command Centre</strong><small>UPSC CSE · 2028</small></div>
+    </div>
+    <nav aria-label="Primary navigation">
+      <button class="nav-item active" data-view="overview"><span>01</span> Overview</button>
+      <button class="nav-item" data-view="syllabus"><span>02</span> Syllabus</button>
+      <button class="nav-item" data-view="today"><span>03</span> Today</button>
+      <button class="nav-item" data-view="revision"><span>04</span> Revision</button>
+      <button class="nav-item" data-view="tests"><span>05</span> Tests</button>
+      <button class="nav-item" data-view="mains"><span>06</span> Mains</button>
+    </nav>
+    <div class="target-card">
+      <span>Target</span>
+      <strong>UPSC CSE 2028</strong>
+      <small id="daysTarget">Calculating…</small>
+    </div>
+  </aside>
+
+  <main>
+    <header class="topbar">
+      <div><p class="eyebrow" id="todayDate"></p><h1 id="pageTitle">Mission control</h1></div>
+      <button class="ghost" id="resetBtn" title="Clear all saved progress">Reset data</button>
+    </header>
+
+    <section class="view active" id="overview">
+      <div class="status-strip">
+        <div><span>Overall syllabus</span><strong id="overallPct">0%</strong></div>
+        <div><span>Study today</span><strong id="todayMinutes">0m</strong></div>
+        <div><span>Mock average</span><strong id="mockAverage">—</strong></div>
+        <div><span>Revision due</span><strong id="revisionCount">0</strong></div>
+      </div>
+
+      <div class="grid overview-grid">
+        <article class="panel progress-visual-panel">
+          <div class="panel-head"><div><p class="eyebrow">Visual syllabus map</p><h2>Progress at a glance</h2></div><button class="text-btn" data-jump="syllabus">Update syllabus</button></div>
+          <div class="progress-visual-layout">
+            <div class="overall-chart-block">
+              <div class="donut donut-large" id="overallDonut" role="img" aria-label="Overall syllabus progress: 0 percent">
+                <div class="donut-label"><strong id="overallDonutPct">0%</strong><span>complete</span></div>
+              </div>
+              <div class="progress-legend"><span><i class="legend-done"></i>Completed</span><span><i class="legend-left"></i>Remaining</span></div>
+            </div>
+            <div class="subject-donuts" id="subjectDonuts" aria-label="Subject-wise syllabus progress"></div>
+          </div>
+        </article>
+
+        <article class="panel mission-panel">
+          <div class="panel-head"><div><p class="eyebrow">Today’s mission</p><h2 id="missionTitle">Build momentum</h2></div><span class="date-chip" id="dayNumber">Day 1</span></div>
+          <div class="mission-list" id="overviewTasks"></div>
+          <button class="primary" data-jump="today">Plan today</button>
+        </article>
+
+        <article class="panel consistency-panel">
+          <div class="panel-head"><div><p class="eyebrow">Consistency</p><h2>Last 7 days</h2></div><strong id="weekHours">0h</strong></div>
+          <div class="week-chart" id="weekChart" aria-label="Study time over the last seven days"></div>
+          <p class="muted" id="consistencyMessage">Log your first study session today.</p>
+        </article>
+
+        <article class="panel next-panel">
+          <p class="eyebrow">Next best action</p>
+          <h2 id="nextAction">Plan three realistic tasks</h2>
+          <p class="muted" id="nextActionReason">A clear daily target removes decision fatigue.</p>
+          <button class="secondary" id="nextActionBtn" data-jump="today">Take action</button>
+        </article>
+      </div>
+    </section>
+
+    <section class="view" id="syllabus">
+      <div class="section-intro"><div><p class="eyebrow">Prelims + Mains + CSAT</p><h2>Your syllabus, broken into action</h2></div><div class="filter-group" role="group" aria-label="Syllabus filter"><button class="filter active" data-filter="all">All</button><button class="filter" data-filter="prelims">Prelims</button><button class="filter" data-filter="mains">Mains</button><button class="filter" data-filter="csat">CSAT</button></div></div>
+      <div class="syllabus-grid" id="syllabusGrid"></div>
+    </section>
+
+    <section class="view" id="today">
+      <div class="grid today-grid">
+        <article class="panel focus-panel">
+          <p class="eyebrow">Deep-work timer</p><h2>Focus sprint</h2>
+          <div class="timer-ring"><span id="timerDisplay">50:00</span><small>FOCUS</small></div>
+          <div class="timer-controls"><button class="primary" id="timerToggle">Start</button><button class="secondary" id="timerReset">Reset</button></div>
+          <div class="preset-row"><button data-minutes="25">25m</button><button class="active" data-minutes="50">50m</button><button data-minutes="90">90m</button></div>
+        </article>
+        <article class="panel plan-panel">
+          <div class="panel-head"><div><p class="eyebrow">Daily plan</p><h2>Maximum three priorities</h2></div><span id="taskProgress">0/0</span></div>
+          <form id="taskForm" class="inline-form"><input id="taskInput" maxlength="90" placeholder="Example: Revise Fundamental Rights" required><select id="taskDuration" aria-label="Planned duration"><option value="30">30m</option><option value="60" selected>1h</option><option value="90">1.5h</option><option value="120">2h</option></select><button class="primary" type="submit">Add</button></form>
+          <div id="taskList" class="task-list"></div>
+        </article>
+        <article class="panel log-panel">
+          <div class="panel-head"><div><p class="eyebrow">Study log</p><h2>Record completed work</h2></div><strong id="logTotal">0m</strong></div>
+          <form id="logForm" class="stack-form"><label>Subject<select id="logSubject"></select></label><label>Minutes<input id="logMinutes" type="number" min="5" max="600" value="50" required></label><label>What did you finish?<input id="logNote" maxlength="100" placeholder="Topic or chapter" required></label><button class="primary" type="submit">Save session</button></form>
+          <div id="recentLogs" class="compact-list"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="view" id="revision">
+      <div class="section-intro"><div><p class="eyebrow">Active recall</p><h2>Revision queue</h2><p class="muted">Add anything worth remembering. The queue schedules it for 1, 3, 7, 14 and 30 days.</p></div></div>
+      <article class="panel">
+        <form id="revisionForm" class="revision-form"><input id="revisionTopic" maxlength="100" placeholder="Topic: Article 19 restrictions" required><select id="revisionSubject"></select><button class="primary" type="submit">Add topic</button></form>
+      </article>
+      <div class="revision-board"><section><div class="column-head"><h3>Due now</h3><span id="dueBadge">0</span></div><div id="dueList" class="revision-list"></div></section><section><div class="column-head"><h3>Upcoming</h3><span>Next 7 days</span></div><div id="upcomingList" class="revision-list"></div></section></div>
+    </section>
+
+    <section class="view" id="tests">
+      <div class="grid test-grid">
+        <article class="panel">
+          <p class="eyebrow">Performance entry</p><h2>Log a mock test</h2>
+          <form id="mockForm" class="stack-form two-col"><label>Test name<input id="mockName" maxlength="70" placeholder="Polity sectional 01" required></label><label>Paper<select id="mockPaper"><option>GS Prelims</option><option>CSAT</option><option>GS Mains</option><option>Essay</option></select></label><label>Correct<input id="mockCorrect" type="number" min="0" required></label><label>Incorrect<input id="mockWrong" type="number" min="0" required></label><label>Unattempted<input id="mockSkipped" type="number" min="0" value="0" required></label><label>Marks per question<input id="mockMarks" type="number" min="0.1" step="0.1" value="2" required></label><button class="primary full" type="submit">Calculate and save</button></form>
+          <p class="form-note">GS score uses ⅓ negative marking. For CSAT, set marks per question to 2.5.</p>
+        </article>
+        <article class="panel">
+          <div class="panel-head"><div><p class="eyebrow">Test history</p><h2>Accuracy and score</h2></div><strong id="bestScore">—</strong></div>
+          <div id="mockHistory" class="mock-history"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="view" id="mains">
+      <div class="grid mains-grid">
+        <article class="panel">
+          <p class="eyebrow">Answer writing</p><h2>Log today’s answer</h2>
+          <form id="answerForm" class="stack-form"><label>Paper<select id="answerPaper"><option>GS I</option><option>GS II</option><option>GS III</option><option>GS IV</option><option>Essay</option><option>Sociology Optional I</option><option>Sociology Optional II</option></select></label><label>Question / topic<textarea id="answerTopic" rows="3" maxlength="240" placeholder="Examine the significance of constitutional morality…" required></textarea></label><div class="form-row"><label>Marks<select id="answerMarks"><option>10</option><option>15</option><option>20</option></select></label><label>Time taken<input id="answerTime" type="number" min="1" max="180" value="12" required></label></div><label>Self-rating<select id="answerRating"><option value="1">1 · Needs work</option><option value="2">2 · Weak</option><option value="3" selected>3 · Fair</option><option value="4">4 · Good</option><option value="5">5 · Strong</option></select></label><button class="primary" type="submit">Save answer</button></form>
+        </article>
+        <article class="panel">
+          <div class="panel-head"><div><p class="eyebrow">Practice record</p><h2>Your answer history</h2></div><strong id="answerCount">0 answers</strong></div>
+          <div class="answer-framework"><span>Quick check</span><ol><li>Direct introduction</li><li>Demand of the question addressed</li><li>Multiple dimensions + examples</li><li>Balanced, forward-looking conclusion</li></ol></div>
+          <div id="answerHistory" class="answer-history"></div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <nav class="mobile-nav" aria-label="Mobile navigation">
+    <button class="active" data-view="overview">Home</button><button data-view="syllabus">Syllabus</button><button data-view="today">Today</button><button data-view="revision">Revise</button><button data-view="tests">Tests</button><button data-view="mains">Mains</button>
+  </nav>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

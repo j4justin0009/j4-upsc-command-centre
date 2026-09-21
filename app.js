@@ -171,19 +171,28 @@ function startGeneratedTimer(){
   generatedTimerId=setInterval(()=>{activeGeneratedTest.remaining--;drawGeneratedTimer();if(activeGeneratedTest.remaining<=0){clearInterval(generatedTimerId);generatedTimerId=null;submitGeneratedTest(true);}},1000);
 }
 
+function testAnswered(test){
+  const total=Number(test.total)||0,unattempted=Number(test.unattempted)||0;
+  return Math.max(0,total-unattempted);
+}
+function testAccuracy(test){
+  const answered=testAnswered(test);
+  return answered?Math.round((Number(test.correct)||0)/answered*100):0;
+}
+
 function renderMaterialTestStats(){
-  const tests=state.materialTests||[],total=tests.reduce((n,t)=>n+t.total,0),correct=tests.reduce((n,t)=>n+t.correct,0),accuracy=total?Math.round(correct/total*100):null,best=tests.length?Math.max(...tests.map(t=>t.accuracy)):null;
-  $('#materialTestsTaken').textContent=tests.length;$('#materialAccuracy').textContent=accuracy===null?'—':accuracy+'%';$('#materialBest').textContent=best===null?'—':best+'%';$('#materialQuestions').textContent=total;$('#generatedBestScore').textContent=best===null?'—':`Best ${best}%`;
-  $('#generatedTestHistory').innerHTML=tests.length?tests.slice().reverse().map(t=>`<article class="mock-row material-result"><div><strong>${esc(t.name)}</strong><span>${esc(t.subject)} · ${t.correct}/${t.total} correct · ${t.unattempted} unattempted</span><button class="review-toggle" type="button" data-test-review="${t.id}">Review answers</button></div><div class="score-pill ${t.accuracy>=70?'good':'needs-work'}">${t.accuracy}%</div><div class="result-detail">${t.review.map((r,i)=>`<div class="review-line"><b>${i+1}. ${r.correct?'✓':'✗'} ${esc(r.answer)}</b> — ${esc(r.reference)}</div>`).join('')}</div></article>`).join(''):'<div class="empty">Your generated test results will appear here.</div>';
-  const groups={};tests.forEach(t=>{const key=t.subject||'Mixed';groups[key]??={correct:0,total:0,tests:0};groups[key].correct+=t.correct;groups[key].total+=t.total;groups[key].tests++;});
-  $('#subjectTestBreakdown').innerHTML=Object.entries(groups).map(([subject,x])=>{const pct=Math.round(x.correct/x.total*100);return `<div class="subject-test-row"><strong>${esc(subject)}</strong><div class="bar"><i style="width:${pct}%"></i></div><span>${pct}% · ${x.tests} test${x.tests===1?'':'s'}</span></div>`;}).join('');
+  const tests=state.materialTests||[],answered=tests.reduce((n,t)=>n+testAnswered(t),0),correct=tests.reduce((n,t)=>n+(Number(t.correct)||0),0),accuracy=answered?Math.round(correct/answered*100):null,best=tests.length?Math.max(...tests.map(testAccuracy)):null;
+  $('#materialTestsTaken').textContent=tests.length;$('#materialAccuracy').textContent=accuracy===null?'—':accuracy+'%';$('#materialBest').textContent=best===null?'—':best+'%';$('#materialQuestions').textContent=answered;$('#generatedBestScore').textContent=best===null?'—':`Best ${best}%`;
+  $('#generatedTestHistory').innerHTML=tests.length?tests.slice().reverse().map(t=>{const score=testAccuracy(t),attempted=testAnswered(t);return `<article class="mock-row material-result"><div><strong>${esc(t.name)}</strong><span>${esc(t.subject)} · ${t.correct}/${attempted} attempted correct · ${t.unattempted} unattempted</span><button class="review-toggle" type="button" data-test-review="${t.id}">Review answers</button></div><div class="score-pill ${score>=70?'good':'needs-work'}">${score}%</div><div class="result-detail">${t.review.map((r,i)=>`<div class="review-line"><b>${i+1}. ${r.correct?'✓':'✗'} ${esc(r.answer)}</b> — ${esc(r.reference)}</div>`).join('')}</div></article>`;}).join(''):'<div class="empty">Your generated test results will appear here.</div>';
+  const groups={};tests.forEach(t=>{const key=t.subject||'Mixed';groups[key]??={correct:0,answered:0,tests:0};groups[key].correct+=Number(t.correct)||0;groups[key].answered+=testAnswered(t);groups[key].tests++;});
+  $('#subjectTestBreakdown').innerHTML=Object.entries(groups).map(([subject,x])=>{const pct=x.answered?Math.round(x.correct/x.answered*100):0;return `<div class="subject-test-row"><strong>${esc(subject)}</strong><div class="bar"><i style="width:${pct}%"></i></div><span>${pct}% · ${x.tests} test${x.tests===1?'':'s'}</span></div>`;}).join('');
 }
 
 function submitGeneratedTest(auto=false){
   if(!activeGeneratedTest)return;
   clearInterval(generatedTimerId);generatedTimerId=null;
   const review=activeGeneratedTest.questions.map((q,index)=>{const selected=$(`input[name="generated-${index}"]:checked`)?.value||'';return{answer:q.answer,selected,correct:selected.toLocaleLowerCase()===q.answer.toLocaleLowerCase(),reference:q.reference};});
-  const correct=review.filter(r=>r.correct).length,total=review.length,unattempted=review.filter(r=>!r.selected).length,accuracy=Math.round(correct/total*100);
+  const correct=review.filter(r=>r.correct).length,total=review.length,unattempted=review.filter(r=>!r.selected).length,answered=total-unattempted,accuracy=answered?Math.round(correct/answered*100):0;
   const subjects=[...new Set(activeGeneratedTest.questions.map(q=>q.subject))];
   state.materialTests.push({id:crypto.randomUUID(),date:isoDay(),name:activeGeneratedTest.materialNames.length===1?activeGeneratedTest.materialNames[0]:'Mixed material test',subject:subjects.length===1?subjects[0]:'Mixed',correct,total,unattempted,accuracy,review});
   activeGeneratedTest=null;$('#activeTestPanel').hidden=true;save();toast(auto?`Time is up: ${accuracy}% accuracy.`:`Test submitted: ${accuracy}% accuracy.`);
@@ -228,12 +237,12 @@ function renderOverview(){
   const due=state.revisions.filter(r=>r.next<=isoDay()).length;
   $('#revisionCount').textContent=due;
   const generated=state.materialTests||[];
-  const generatedQuestions=generated.reduce((n,t)=>n+t.total,0);
+  const generatedQuestions=generated.reduce((n,t)=>n+testAnswered(t),0);
   const generatedCorrect=generated.reduce((n,t)=>n+t.correct,0);
   $('#generatedTestCount').textContent=generated.length;
   $('#generatedQuestionCount').textContent=generatedQuestions;
   $('#generatedTestAccuracy').textContent=generatedQuestions?Math.round(generatedCorrect/generatedQuestions*100)+'%':'—';
-  $('#testInsightMessage').textContent=generated.length?`${generated[generated.length-1].accuracy}% on your latest material test.`:(materialsCache.length?'Your material library is ready for a random test.':'Upload study material to create your first random test.');
+  $('#testInsightMessage').textContent=generated.length?`${testAccuracy(generated[generated.length-1])}% on your latest material test.`:(materialsCache.length?'Your material library is ready for a random test.':'Upload study material to create your first random test.');
   const tasks=state.tasks.filter(t=>t.date===isoDay());
   $('#overviewTasks').innerHTML=tasks.length?tasks.map(taskHTML).join(''):'<div class="empty">No priorities yet. Add up to three meaningful tasks.</div>';
   const started=Math.max(1,Math.floor((new Date()-new Date(state.startedAt+'T00:00:00'))/86400000)+1);

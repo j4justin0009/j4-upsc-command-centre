@@ -18,7 +18,7 @@ const SUBJECTS = [
 
 const KEY = 'j4-upsc-command-centre-v1';
 const isoDay = (date = new Date()) => date.toISOString().slice(0,10);
-const initial = {topics:{},tasks:[],logs:[],revisions:[],mocks:[],answers:[],startedAt:isoDay()};
+const initial = {topics:{},tasks:[],logs:[],revisions:[],mocks:[],materialTests:[],answers:[],startedAt:isoDay()};
 let state;
 try { state = {...initial, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; } catch { state = structuredClone(initial); }
 const save = () => { localStorage.setItem(KEY, JSON.stringify(state)); renderAll(); };
@@ -28,6 +28,123 @@ const esc = (s) => String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':
 const fmtMinutes = (m) => m >= 60 ? `${Math.floor(m/60)}h ${m%60 ? m%60+'m' : ''}`.trim() : `${m}m`;
 const formatDate = (d) => new Date(d+'T00:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short'});
 const toast = (msg) => { const t=$('#toast'); t.textContent=msg;t.classList.add('show');clearTimeout(toast.id);toast.id=setTimeout(()=>t.classList.remove('show'),2200); };
+
+const MATERIAL_DB='j4-upsc-materials-v1';
+let materialsCache=[];
+let activeGeneratedTest=null;
+let generatedTimerId=null;
+
+function materialDB(){
+  return new Promise((resolve,reject)=>{
+    const request=indexedDB.open(MATERIAL_DB,1);
+    request.onupgradeneeded=()=>request.result.createObjectStore('materials',{keyPath:'id'});
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error);
+  });
+}
+async function materialStore(mode,work){
+  const db=await materialDB();
+  return new Promise((resolve,reject)=>{const tx=db.transaction('materials',mode);const store=tx.objectStore('materials');const result=work(store);tx.oncomplete=()=>{db.close();resolve(result?.result)};tx.onerror=()=>{db.close();reject(tx.error)};});
+}
+const getMaterials=()=>materialStore('readonly',store=>store.getAll());
+const putMaterial=(material)=>materialStore('readwrite',store=>store.put(material));
+const deleteMaterial=(id)=>materialStore('readwrite',store=>store.delete(id));
+const clearMaterials=()=>materialStore('readwrite',store=>store.clear());
+
+function normalizeMaterialText(text){return text.replace(/\u0000/g,' ').replace(/[ \t]+/g,' ').replace(/\n{3,}/g,'\n\n').trim().slice(0,600000);}
+async function extractMaterialText(file){
+  if(file.size>6*1024*1024)throw new Error(`${file.name} is larger than 6 MB.`);
+  if(file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf')){
+    if(!window.pdfjsLib)throw new Error('PDF reader could not load. Try again online or upload a TXT file.');
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf=await window.pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+    const pages=[];
+    for(let pageNo=1;pageNo<=pdf.numPages;pageNo++){const page=await pdf.getPage(pageNo);const content=await page.getTextContent();pages.push(content.items.map(item=>item.str).join(' '));}
+    return normalizeMaterialText(pages.join('\n'));
+  }
+  return normalizeMaterialText(await file.text());
+}
+
+function renderMaterials(){
+  const list=$('#materialList'),picker=$('#materialPicker');
+  if(!materialsCache.length){list.innerHTML='<div class="empty">No study material added yet.</div>';picker.innerHTML='<div class="empty">Upload material first.</div>';return;}
+  list.innerHTML=materialsCache.map(m=>`<article class="material-item"><span class="file-icon">${m.type==='pdf'?'PDF':'TXT'}</span><div class="material-copy"><strong>${esc(m.name)}</strong><span>${esc(m.subject)} · ${Math.max(1,Math.round(m.chars/1000))}k characters</span></div><button class="icon-btn" data-material-delete="${m.id}" aria-label="Delete ${esc(m.name)}">×</button></article>`).join('');
+  picker.innerHTML=materialsCache.map(m=>`<label><input type="checkbox" name="test-material" value="${m.id}" checked><span>${esc(m.name)}</span><small>${esc(m.subject)}</small></label>`).join('');
+}
+async function refreshMaterials(){
+  try{materialsCache=(await getMaterials()).sort((a,b)=>b.addedAt.localeCompare(a.addedAt));renderMaterials();renderOverview();}
+  catch{toast('Could not open the local material library.');}
+}
+
+const STOP_WORDS=new Set('about after again against also among because before being between both could does doing during each from further have having into itself more most other over same should some such than that their them then there these they this those through under until very what when where which while whom with would your were will been only upon however therefore thus chapter figure table source india indian'.split(' '));
+const shuffle=(items)=>{const copy=[...items];for(let i=copy.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[copy[i],copy[j]]=[copy[j],copy[i]];}return copy;};
+function keywordCandidates(text){
+  const counts=new Map();
+  for(const match of text.matchAll(/[\p{L}][\p{L}'’.-]{3,}/gu)){const word=match[0].replace(/[.'’”-]+$/g,'');const key=word.toLocaleLowerCase();if(word.length<5||STOP_WORDS.has(key))continue;const current=counts.get(key)||{word,count:0};current.count++;if(/^[A-Z]/.test(word))current.word=word;counts.set(key,current);}
+  return [...counts.values()].sort((a,b)=>b.count-a.count).map(x=>x.word);
+}
+function makeQuestionPool(materials){
+  const combined=materials.map(m=>m.text).join(' ');
+  const globalTerms=keywordCandidates(combined).slice(0,180);
+  const pool=[];
+  materials.forEach(material=>{
+    const sentences=material.text.split(/(?<=[.!?])\s+|\n+/).map(s=>s.trim().replace(/^[-•\d.)\s]+/,'')).filter(s=>s.length>=55&&s.length<=360);
+    shuffle(sentences).forEach(sentence=>{
+      const terms=keywordCandidates(sentence).filter(term=>globalTerms.some(x=>x.toLocaleLowerCase()===term.toLocaleLowerCase()));
+      const answer=terms.sort((a,b)=>b.length-a.length)[0];
+      if(!answer)return;
+      const distractors=shuffle(globalTerms.filter(x=>x.toLocaleLowerCase()!==answer.toLocaleLowerCase()&&Math.abs(x.length-answer.length)<=8)).slice(0,3);
+      if(distractors.length<3)return;
+      const escaped=answer.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      const prompt=sentence.replace(new RegExp(`\\b${escaped}\\b`,'i'),'_____');
+      if(prompt===sentence)return;
+      pool.push({id:crypto.randomUUID(),prompt,answer,options:shuffle([answer,...distractors]),source:material.name,subject:material.subject,reference:sentence});
+    });
+  });
+  return shuffle(pool);
+}
+
+function renderActiveGeneratedTest(){
+  if(!activeGeneratedTest)return;
+  $('#activeTestPanel').hidden=false;
+  $('#activeTestTitle').textContent=`${activeGeneratedTest.questions.length}-question material test`;
+  $('#generatedQuestions').innerHTML=activeGeneratedTest.questions.map((q,index)=>`<article class="generated-question"><span class="question-source">${esc(q.subject)} · ${esc(q.source)}</span><h3>${index+1}. ${esc(q.prompt)}</h3><div class="question-options">${q.options.map(option=>`<label class="question-option"><input type="radio" name="generated-${index}" value="${esc(option)}"><span>${esc(option)}</span></label>`).join('')}</div></article>`).join('');
+  updateGeneratedProgress();
+  $('#activeTestPanel').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function updateGeneratedProgress(){
+  if(!activeGeneratedTest)return;
+  const answered=$$('#activeTestForm input[type="radio"]:checked').length;
+  $('#testProgressText').textContent=`${answered}/${activeGeneratedTest.questions.length} answered`;
+}
+function drawGeneratedTimer(){
+  if(!activeGeneratedTest||!activeGeneratedTest.remaining){$('#testTimer').textContent='Untimed';return;}
+  const m=Math.floor(activeGeneratedTest.remaining/60),s=activeGeneratedTest.remaining%60;
+  $('#testTimer').textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+function startGeneratedTimer(){
+  clearInterval(generatedTimerId);drawGeneratedTimer();
+  if(!activeGeneratedTest?.remaining)return;
+  generatedTimerId=setInterval(()=>{activeGeneratedTest.remaining--;drawGeneratedTimer();if(activeGeneratedTest.remaining<=0){clearInterval(generatedTimerId);generatedTimerId=null;submitGeneratedTest(true);}},1000);
+}
+
+function renderMaterialTestStats(){
+  const tests=state.materialTests||[],total=tests.reduce((n,t)=>n+t.total,0),correct=tests.reduce((n,t)=>n+t.correct,0),accuracy=total?Math.round(correct/total*100):null,best=tests.length?Math.max(...tests.map(t=>t.accuracy)):null;
+  $('#materialTestsTaken').textContent=tests.length;$('#materialAccuracy').textContent=accuracy===null?'—':accuracy+'%';$('#materialBest').textContent=best===null?'—':best+'%';$('#materialQuestions').textContent=total;$('#generatedBestScore').textContent=best===null?'—':`Best ${best}%`;
+  $('#generatedTestHistory').innerHTML=tests.length?tests.slice().reverse().map(t=>`<article class="mock-row material-result"><div><strong>${esc(t.name)}</strong><span>${esc(t.subject)} · ${t.correct}/${t.total} correct · ${t.unattempted} unattempted</span><button class="review-toggle" type="button" data-test-review="${t.id}">Review answers</button></div><div class="score-pill ${t.accuracy>=70?'good':'needs-work'}">${t.accuracy}%</div><div class="result-detail">${t.review.map((r,i)=>`<div class="review-line"><b>${i+1}. ${r.correct?'✓':'✗'} ${esc(r.answer)}</b> — ${esc(r.reference)}</div>`).join('')}</div></article>`).join(''):'<div class="empty">Your generated test results will appear here.</div>';
+  const groups={};tests.forEach(t=>{const key=t.subject||'Mixed';groups[key]??={correct:0,total:0,tests:0};groups[key].correct+=t.correct;groups[key].total+=t.total;groups[key].tests++;});
+  $('#subjectTestBreakdown').innerHTML=Object.entries(groups).map(([subject,x])=>{const pct=Math.round(x.correct/x.total*100);return `<div class="subject-test-row"><strong>${esc(subject)}</strong><div class="bar"><i style="width:${pct}%"></i></div><span>${pct}% · ${x.tests} test${x.tests===1?'':'s'}</span></div>`;}).join('');
+}
+
+function submitGeneratedTest(auto=false){
+  if(!activeGeneratedTest)return;
+  clearInterval(generatedTimerId);generatedTimerId=null;
+  const review=activeGeneratedTest.questions.map((q,index)=>{const selected=$(`input[name="generated-${index}"]:checked`)?.value||'';return{answer:q.answer,selected,correct:selected.toLocaleLowerCase()===q.answer.toLocaleLowerCase(),reference:q.reference};});
+  const correct=review.filter(r=>r.correct).length,total=review.length,unattempted=review.filter(r=>!r.selected).length,accuracy=Math.round(correct/total*100);
+  const subjects=[...new Set(activeGeneratedTest.questions.map(q=>q.subject))];
+  state.materialTests.push({id:crypto.randomUUID(),date:isoDay(),name:activeGeneratedTest.materialNames.length===1?activeGeneratedTest.materialNames[0]:'Mixed material test',subject:subjects.length===1?subjects[0]:'Mixed',correct,total,unattempted,accuracy,review});
+  activeGeneratedTest=null;$('#activeTestPanel').hidden=true;save();toast(auto?`Time is up: ${accuracy}% accuracy.`:`Test submitted: ${accuracy}% accuracy.`);
+}
 
 function navigate(id){
   $$('.view').forEach(v=>v.classList.toggle('active',v.id===id));
@@ -67,6 +184,13 @@ function renderOverview(){
   $('#mockAverage').textContent=scores.length?Math.round(scores.reduce((a,b)=>a+b,0)/scores.length)+'%':'—';
   const due=state.revisions.filter(r=>r.next<=isoDay()).length;
   $('#revisionCount').textContent=due;
+  const generated=state.materialTests||[];
+  const generatedQuestions=generated.reduce((n,t)=>n+t.total,0);
+  const generatedCorrect=generated.reduce((n,t)=>n+t.correct,0);
+  $('#generatedTestCount').textContent=generated.length;
+  $('#generatedQuestionCount').textContent=generatedQuestions;
+  $('#generatedTestAccuracy').textContent=generatedQuestions?Math.round(generatedCorrect/generatedQuestions*100)+'%':'—';
+  $('#testInsightMessage').textContent=generated.length?`${generated[generated.length-1].accuracy}% on your latest material test.`:(materialsCache.length?'Your material library is ready for a random test.':'Upload study material to create your first random test.');
   const tasks=state.tasks.filter(t=>t.date===isoDay());
   $('#overviewTasks').innerHTML=tasks.length?tasks.map(taskHTML).join(''):'<div class="empty">No priorities yet. Add up to three meaningful tasks.</div>';
   const started=Math.max(1,Math.floor((new Date()-new Date(state.startedAt+'T00:00:00'))/86400000)+1);
@@ -116,6 +240,7 @@ function revisionHTML(r){return `<article class="revision-item ${r.next<=isoDay(
 function renderMocks(){
   $('#mockHistory').innerHTML=state.mocks.length?state.mocks.slice().reverse().map(m=>`<article class="mock-row"><strong>${esc(m.name)}</strong><span>${esc(m.paper)} · ${m.correct} correct · ${m.wrong} wrong · ${m.accuracy}% accuracy</span><div class="score-pill">${m.score}</div></article>`).join(''):'<div class="empty">Log your first mock to establish a baseline.</div>';
   $('#bestScore').textContent=state.mocks.length?`Best ${Math.max(...state.mocks.map(m=>Number(m.score)))}`:'—';
+  renderMaterialTestStats();
 }
 
 function renderAnswers(){
@@ -125,7 +250,7 @@ function renderAnswers(){
 
 function renderAll(){renderOverview();renderSyllabus();renderToday();renderRevision();renderMocks();renderAnswers();}
 
-document.addEventListener('click',e=>{
+document.addEventListener('click',async e=>{
   const nav=e.target.closest('[data-view]');if(nav)navigate(nav.dataset.view);
   const jump=e.target.closest('[data-jump]');if(jump)navigate(jump.dataset.jump);
   const topic=e.target.closest('[data-topic]');if(topic){state.topics[topic.dataset.topic]=topic.checked;save();}
@@ -134,6 +259,8 @@ document.addEventListener('click',e=>{
   const revised=e.target.closest('[data-revised]');if(revised){const r=state.revisions.find(x=>x.id===revised.dataset.revised);if(r){const intervals=[1,3,7,14,30];r.level=Math.min(r.level+1,4);const next=new Date();next.setDate(next.getDate()+intervals[r.level]);r.next=isoDay(next);save();toast('Revision recorded. Next review scheduled.');}}
   const rdel=e.target.closest('[data-revision-delete]');if(rdel){state.revisions=state.revisions.filter(r=>r.id!==rdel.dataset.revisionDelete);save();}
   const adel=e.target.closest('[data-answer-delete]');if(adel){state.answers=state.answers.filter(a=>a.id!==adel.dataset.answerDelete);save();}
+  const materialDelete=e.target.closest('[data-material-delete]');if(materialDelete&&confirm('Remove this study material from the local test library? Existing test statistics will remain.')){await deleteMaterial(materialDelete.dataset.materialDelete);await refreshMaterials();toast('Study material removed.');}
+  const review=e.target.closest('[data-test-review]');if(review){review.closest('.mock-row').classList.toggle('review-open');review.textContent=review.closest('.mock-row').classList.contains('review-open')?'Hide answers':'Review answers';}
   const filter=e.target.closest('[data-filter]');if(filter){activeFilter=filter.dataset.filter;$$('[data-filter]').forEach(b=>b.classList.toggle('active',b===filter));renderSyllabus();}
 });
 
@@ -143,19 +270,45 @@ $('#revisionForm').addEventListener('submit',e=>{e.preventDefault();state.revisi
 $('#mockForm').addEventListener('submit',e=>{e.preventDefault();const correct=Number($('#mockCorrect').value),wrong=Number($('#mockWrong').value),skipped=Number($('#mockSkipped').value),marks=Number($('#mockMarks').value);const attempted=correct+wrong;const accuracy=attempted?Math.round(correct/attempted*100):0;const score=(correct*marks-wrong*marks/3).toFixed(2);state.mocks.push({id:crypto.randomUUID(),date:isoDay(),name:$('#mockName').value.trim(),paper:$('#mockPaper').value,correct,wrong,skipped,marks,accuracy,score});e.target.reset();$('#mockMarks').value=2;$('#mockSkipped').value=0;save();toast(`Mock saved: ${score} marks.`);});
 $('#answerForm').addEventListener('submit',e=>{e.preventDefault();state.answers.push({id:crypto.randomUUID(),date:isoDay(),paper:$('#answerPaper').value,topic:$('#answerTopic').value.trim(),marks:Number($('#answerMarks').value),time:Number($('#answerTime').value),rating:Number($('#answerRating').value)});e.target.reset();$('#answerTime').value=12;$('#answerRating').value=3;save();toast('Answer practice recorded.');});
 
+$('#materialUploadForm').addEventListener('submit',async e=>{
+  e.preventDefault();const files=[...$('#materialFiles').files];if(!files.length)return;
+  const button=$('#materialUploadBtn');button.disabled=true;button.textContent='Reading material…';
+  let added=0;
+  try{
+    for(const file of files){const text=await extractMaterialText(file);if(text.length<150)throw new Error(`${file.name} does not contain enough readable text.`);await putMaterial({id:crypto.randomUUID(),name:file.name,subject:$('#materialSubject').value,type:file.name.toLowerCase().endsWith('.pdf')?'pdf':'text',chars:text.length,text,addedAt:new Date().toISOString()});added++;}
+    e.target.reset();await refreshMaterials();toast(`${added} material${added===1?'':'s'} added to your test library.`);
+  }catch(error){toast(error.message||'Could not read that material.');}
+  finally{button.disabled=false;button.textContent='Add to test library';}
+});
+
+$('#randomTestForm').addEventListener('submit',async e=>{
+  e.preventDefault();const ids=$$('input[name="test-material"]:checked').map(input=>input.value);if(!ids.length){toast('Select at least one study material.');return;}
+  const selected=materialsCache.filter(m=>ids.includes(m.id));const requested=Number($('#testQuestionCount').value);const pool=makeQuestionPool(selected);
+  if(!pool.length){toast('Not enough clear factual sentences were found. Try a longer text-based file.');return;}
+  const questions=pool.slice(0,Math.min(requested,pool.length));
+  if(questions.length<requested)toast(`Created ${questions.length} questions from the available text.`);
+  const minutes=Number($('#testTimeLimit').value);
+  activeGeneratedTest={questions,materialNames:selected.map(m=>m.name),remaining:minutes*60};renderActiveGeneratedTest();startGeneratedTimer();
+});
+
+$('#activeTestForm').addEventListener('change',updateGeneratedProgress);
+$('#activeTestForm').addEventListener('submit',e=>{e.preventDefault();submitGeneratedTest(false);});
+$('#cancelGeneratedTest').addEventListener('click',()=>{if(!activeGeneratedTest||confirm('Cancel this test? The current answers will not be saved.')){clearInterval(generatedTimerId);generatedTimerId=null;activeGeneratedTest=null;$('#activeTestPanel').hidden=true;toast('Test cancelled.');}});
+
 let timerSeconds=3000,timerTotal=3000,timerId=null;
 function drawTimer(){const m=Math.floor(timerSeconds/60),s=timerSeconds%60;$('#timerDisplay').textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;}
 $('#timerToggle').addEventListener('click',()=>{if(timerId){clearInterval(timerId);timerId=null;$('#timerToggle').textContent='Resume';return;}$('#timerToggle').textContent='Pause';timerId=setInterval(()=>{timerSeconds--;drawTimer();if(timerSeconds<=0){clearInterval(timerId);timerId=null;$('#timerToggle').textContent='Start';timerSeconds=timerTotal;drawTimer();toast('Focus sprint complete. Log what you finished.');}},1000);});
 $('#timerReset').addEventListener('click',()=>{clearInterval(timerId);timerId=null;timerSeconds=timerTotal;drawTimer();$('#timerToggle').textContent='Start';});
 $$('[data-minutes]').forEach(b=>b.addEventListener('click',()=>{clearInterval(timerId);timerId=null;timerTotal=Number(b.dataset.minutes)*60;timerSeconds=timerTotal;$$('[data-minutes]').forEach(x=>x.classList.toggle('active',x===b));$('#timerToggle').textContent='Start';drawTimer();}));
 
-$('#resetBtn').addEventListener('click',()=>{if(confirm('Clear every task, session, revision, test and syllabus tick? This cannot be undone.')){state=structuredClone(initial);localStorage.removeItem(KEY);save();toast('Dashboard reset.');}});
+$('#resetBtn').addEventListener('click',async()=>{if(confirm('Clear every task, session, revision, test, uploaded material and syllabus tick? This cannot be undone.')){state=structuredClone(initial);localStorage.removeItem(KEY);await clearMaterials();materialsCache=[];renderMaterials();save();toast('Dashboard reset.');}});
 
 const subjectOptions=SUBJECTS.map(s=>`<option value="${s.name}">${s.name}</option>`).join('');
-$('#logSubject').innerHTML=subjectOptions;$('#revisionSubject').innerHTML=subjectOptions;
+$('#logSubject').innerHTML=subjectOptions;$('#revisionSubject').innerHTML=subjectOptions;$('#materialSubject').innerHTML=subjectOptions;
 const now=new Date();$('#todayDate').textContent=now.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 const target=new Date('2028-05-28T00:00:00');const days=Math.max(0,Math.ceil((target-now)/86400000));$('#daysTarget').textContent=`${days.toLocaleString('en-IN')} days to provisional Prelims target`;
 renderAll();
+refreshMaterials();
 
 // Optional WebMCP support: lets compatible assistants use the same visible workflows.
 function registerAgentTools(){

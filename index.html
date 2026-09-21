@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#101a35">
-  <meta name="description" content="J4's private UPSC 2028 preparation dashboard.">
+  <meta name="description" content="J4's local-first UPSC 2028 preparation dashboard.">
   <title>J4 UPSC Command Centre</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="styles.css">
@@ -70,6 +70,16 @@
           <p class="muted" id="consistencyMessage">Log your first study session today.</p>
         </article>
 
+        <article class="panel test-insight-panel">
+          <div class="panel-head"><div><p class="eyebrow">Material tests</p><h2>Recall performance</h2></div><button class="text-btn" data-jump="tests">Take a test</button></div>
+          <div class="test-insight-stats">
+            <div><strong id="generatedTestAccuracy">—</strong><span>Accuracy</span></div>
+            <div><strong id="generatedTestCount">0</strong><span>Tests</span></div>
+            <div><strong id="generatedQuestionCount">0</strong><span>Questions</span></div>
+          </div>
+          <p class="muted" id="testInsightMessage">Upload study material to create your first random test.</p>
+        </article>
+
         <article class="panel next-panel">
           <p class="eyebrow">Next best action</p>
           <h2 id="nextAction">Plan three realistic tasks</h2>
@@ -114,14 +124,55 @@
     </section>
 
     <section class="view" id="tests">
-      <div class="grid test-grid">
+      <div class="test-stats-strip" id="materialTestStats">
+        <div><span>Generated tests</span><strong id="materialTestsTaken">0</strong></div>
+        <div><span>Overall accuracy</span><strong id="materialAccuracy">—</strong></div>
+        <div><span>Best attempt</span><strong id="materialBest">—</strong></div>
+        <div><span>Questions answered</span><strong id="materialQuestions">0</strong></div>
+      </div>
+
+      <div class="grid test-builder-grid">
+        <article class="panel material-upload-panel">
+          <p class="eyebrow">Your source library</p><h2>Upload study material</h2>
+          <p class="muted">PDF, TXT and Markdown files are read in this browser. The files and extracted text are not uploaded to a server.</p>
+          <form id="materialUploadForm" class="stack-form">
+            <label>Subject<select id="materialSubject"></select></label>
+            <label class="file-drop">Study material<input id="materialFiles" type="file" accept=".pdf,.txt,.md,text/plain,application/pdf" multiple required><span>Choose one or more files</span><small>Maximum 6 MB per file</small></label>
+            <button class="primary" type="submit" id="materialUploadBtn">Add to test library</button>
+          </form>
+          <div id="materialList" class="material-list"></div>
+        </article>
+
+        <article class="panel random-test-panel">
+          <p class="eyebrow">Active recall</p><h2>Build a random test</h2>
+          <p class="muted">Questions are generated from important statements in your selected materials. Each new attempt is shuffled.</p>
+          <form id="randomTestForm" class="stack-form">
+            <fieldset class="material-picker"><legend>Choose material</legend><div id="materialPicker"><div class="empty">Upload material first.</div></div></fieldset>
+            <div class="form-row"><label>Questions<select id="testQuestionCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></label><label>Time limit<select id="testTimeLimit"><option value="0">Untimed</option><option value="5">5 minutes</option><option value="10" selected>10 minutes</option><option value="20">20 minutes</option><option value="30">30 minutes</option></select></label></div>
+            <button class="primary" type="submit" id="startRandomTest">Start random test</button>
+          </form>
+          <div class="privacy-note"><strong>Private by design</strong><span>Material text and test attempts stay in this browser’s storage.</span></div>
+        </article>
+      </div>
+
+      <article class="panel active-test-panel" id="activeTestPanel" hidden>
+        <div class="panel-head test-session-head"><div><p class="eyebrow">Test in progress</p><h2 id="activeTestTitle">Random material test</h2></div><div class="test-session-meta"><span id="testProgressText">0/0 answered</span><strong id="testTimer">Untimed</strong></div></div>
+        <form id="activeTestForm"><div id="generatedQuestions" class="generated-questions"></div><div class="test-submit-row"><button class="secondary" type="button" id="cancelGeneratedTest">Cancel test</button><button class="primary" type="submit">Submit test</button></div></form>
+      </article>
+
+      <div class="grid test-results-grid">
+        <article class="panel">
+          <div class="panel-head"><div><p class="eyebrow">Generated-test history</p><h2>Results from your materials</h2></div><strong id="generatedBestScore">—</strong></div>
+          <div id="generatedTestHistory" class="mock-history"></div>
+          <div id="subjectTestBreakdown" class="subject-test-breakdown"></div>
+        </article>
         <article class="panel">
           <p class="eyebrow">Performance entry</p><h2>Log a mock test</h2>
           <form id="mockForm" class="stack-form two-col"><label>Test name<input id="mockName" maxlength="70" placeholder="Polity sectional 01" required></label><label>Paper<select id="mockPaper"><option>GS Prelims</option><option>CSAT</option><option>GS Mains</option><option>Essay</option></select></label><label>Correct<input id="mockCorrect" type="number" min="0" required></label><label>Incorrect<input id="mockWrong" type="number" min="0" required></label><label>Unattempted<input id="mockSkipped" type="number" min="0" value="0" required></label><label>Marks per question<input id="mockMarks" type="number" min="0.1" step="0.1" value="2" required></label><button class="primary full" type="submit">Calculate and save</button></form>
           <p class="form-note">GS score uses ⅓ negative marking. For CSAT, set marks per question to 2.5.</p>
         </article>
-        <article class="panel">
-          <div class="panel-head"><div><p class="eyebrow">Test history</p><h2>Accuracy and score</h2></div><strong id="bestScore">—</strong></div>
+        <article class="panel full-span">
+          <div class="panel-head"><div><p class="eyebrow">Manual test history</p><h2>Accuracy and score</h2></div><strong id="bestScore">—</strong></div>
           <div id="mockHistory" class="mock-history"></div>
         </article>
       </div>
@@ -147,6 +198,7 @@
   </nav>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="app.js"></script>
 </body>
 </html>

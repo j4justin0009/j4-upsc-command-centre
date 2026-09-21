@@ -155,6 +155,23 @@
         </article>
       </div>
 
+      <article class="panel notebook-paper-panel">
+        <div class="panel-head"><div><p class="eyebrow">NotebookLM bridge</p><h2>Question-paper library</h2></div><span class="date-chip" id="notebookPaperCount">0 papers</span></div>
+        <div class="notebook-paper-layout">
+          <form id="notebookPaperForm" class="stack-form">
+            <p class="muted">Import the Markdown, TXT or JSON response from NotebookLM. The importer detects the <code>test_paper</code> JSON block automatically.</p>
+            <label>Paper title<input id="notebookPaperTitle" maxlength="90" placeholder="Example: Polity · Constitution Test 01"></label>
+            <label>Subject<select id="notebookPaperSubject"></select></label>
+            <label class="file-drop">NotebookLM output<input id="notebookPaperFile" type="file" accept=".md,.txt,.json,text/plain,application/json" required><span>Choose NotebookLM file</span><small>Markdown with fenced JSON is supported</small></label>
+            <button class="primary" type="submit" id="notebookImportBtn">Import question paper</button>
+          </form>
+          <div class="paper-library">
+            <label class="paper-search">Search papers<input id="notebookPaperSearch" type="search" placeholder="Search by title or subject"></label>
+            <div id="notebookPaperList"><div class="empty">Imported NotebookLM papers will appear here.</div></div>
+          </div>
+        </div>
+      </article>
+
       <article class="panel active-test-panel" id="activeTestPanel" hidden>
         <div class="panel-head test-session-head"><div><p class="eyebrow">Test in progress</p><h2 id="activeTestTitle">Random material test</h2></div><div class="test-session-meta"><span id="testProgressText">0/0 answered</span><strong id="testTimer">Untimed</strong></div></div>
         <form id="activeTestForm"><div id="generatedQuestions" class="generated-questions"></div><div class="test-submit-row"><button class="secondary" type="button" id="cancelGeneratedTest">Cancel test</button><button class="primary" type="submit">Submit test</button></div></form>
@@ -198,6 +215,6 @@
   </nav>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=2.2"></script>
+  <script src="app.js?v=2.3"></script>
 </body>
 </html>

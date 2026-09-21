@@ -31,25 +31,33 @@ const toast = (msg) => { const t=$('#toast'); t.textContent=msg;t.classList.add(
 
 const MATERIAL_DB='j4-upsc-materials-v1';
 let materialsCache=[];
+let notebookPapersCache=[];
+let notebookPaperQuery='';
 let activeGeneratedTest=null;
 let generatedTimerId=null;
 
 function materialDB(){
   return new Promise((resolve,reject)=>{
-    const request=indexedDB.open(MATERIAL_DB,1);
-    request.onupgradeneeded=()=>request.result.createObjectStore('materials',{keyPath:'id'});
+    const request=indexedDB.open(MATERIAL_DB,2);
+    request.onupgradeneeded=()=>{if(!request.result.objectStoreNames.contains('materials'))request.result.createObjectStore('materials',{keyPath:'id'});if(!request.result.objectStoreNames.contains('papers'))request.result.createObjectStore('papers',{keyPath:'id'});};
     request.onsuccess=()=>resolve(request.result);
     request.onerror=()=>reject(request.error);
   });
 }
-async function materialStore(mode,work){
+async function localStore(name,mode,work){
   const db=await materialDB();
-  return new Promise((resolve,reject)=>{const tx=db.transaction('materials',mode);const store=tx.objectStore('materials');const result=work(store);tx.oncomplete=()=>{db.close();resolve(result?.result)};tx.onerror=()=>{db.close();reject(tx.error)};});
+  return new Promise((resolve,reject)=>{const tx=db.transaction(name,mode);const store=tx.objectStore(name);const result=work(store);tx.oncomplete=()=>{db.close();resolve(result?.result)};tx.onerror=()=>{db.close();reject(tx.error)};});
 }
+const materialStore=(mode,work)=>localStore('materials',mode,work);
+const paperStore=(mode,work)=>localStore('papers',mode,work);
 const getMaterials=()=>materialStore('readonly',store=>store.getAll());
 const putMaterial=(material)=>materialStore('readwrite',store=>store.put(material));
 const deleteMaterial=(id)=>materialStore('readwrite',store=>store.delete(id));
 const clearMaterials=()=>materialStore('readwrite',store=>store.clear());
+const getPapers=()=>paperStore('readonly',store=>store.getAll());
+const putPaper=(paper)=>paperStore('readwrite',store=>store.put(paper));
+const deletePaper=(id)=>paperStore('readwrite',store=>store.delete(id));
+const clearPapers=()=>paperStore('readwrite',store=>store.clear());
 
 function normalizeMaterialText(text){return text.replace(/\u0000/g,' ').replace(/[ \t]+/g,' ').replace(/\n{3,}/g,'\n\n').trim().slice(0,600000);}
 async function extractMaterialText(file){
@@ -74,6 +82,41 @@ function renderMaterials(){
 async function refreshMaterials(){
   try{materialsCache=(await getMaterials()).sort((a,b)=>b.addedAt.localeCompare(a.addedAt));renderMaterials();renderOverview();}
   catch{toast('Could not open the local material library.');}
+}
+
+function parseNotebookPaper(raw){
+  const fenced=raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate=(fenced?.[1]||raw).trim();
+  const start=candidate.indexOf('{'),end=candidate.lastIndexOf('}');
+  if(start<0||end<=start)throw new Error('No JSON question paper was found in this file.');
+  let parsed;try{parsed=JSON.parse(candidate.slice(start,end+1));}catch{throw new Error('The NotebookLM JSON could not be parsed. Ask it for valid JSON without comments.');}
+  const questions=Array.isArray(parsed)?parsed:parsed.test_paper;
+  if(!Array.isArray(questions)||!questions.length)throw new Error('The JSON must contain a non-empty test_paper array.');
+  return questions.map((item,index)=>{
+    const question=String(item.question||'').trim(),options=Array.isArray(item.options)?item.options.map(x=>String(x).trim()).filter(Boolean):[],answer=String(item.correct_answer||'').trim();
+    if(!question||options.length<2||!answer)throw new Error(`Question ${index+1} is missing its question, options or correct_answer.`);
+    const exact=options.find(option=>option===answer)||options.find(option=>option.toLocaleLowerCase()===answer.toLocaleLowerCase());
+    if(!exact)throw new Error(`Question ${index+1}'s correct_answer does not match any option.`);
+    return{question,options,correct_answer:exact};
+  });
+}
+
+function renderNotebookPapers(){
+  const filtered=notebookPapersCache.filter(p=>`${p.title} ${p.subject}`.toLocaleLowerCase().includes(notebookPaperQuery));
+  $('#notebookPaperCount').textContent=`${notebookPapersCache.length} paper${notebookPapersCache.length===1?'':'s'}`;
+  const list=$('#notebookPaperList');list.className='notebook-paper-list';
+  list.innerHTML=filtered.length?filtered.map(p=>`<article class="notebook-paper-item"><strong>${esc(p.title)}</strong><span>${esc(p.subject)} · ${p.questions.length} questions · ${formatDate(p.addedAt.slice(0,10))}</span><div class="paper-actions"><button class="paper-start" type="button" data-start-paper="${p.id}">Take test</button><button class="icon-btn" type="button" data-paper-delete="${p.id}" aria-label="Delete ${esc(p.title)}">×</button></div></article>`).join(''):`<div class="empty">${notebookPapersCache.length?'No papers match your search.':'Imported NotebookLM papers will appear here.'}</div>`;
+}
+async function refreshNotebookPapers(){
+  try{notebookPapersCache=(await getPapers()).sort((a,b)=>b.addedAt.localeCompare(a.addedAt));renderNotebookPapers();}
+  catch{toast('Could not open the NotebookLM paper library.');}
+}
+
+function startNotebookPaper(id){
+  const paper=notebookPapersCache.find(p=>p.id===id);if(!paper)return;
+  const questions=shuffle(paper.questions).map(item=>({id:crypto.randomUUID(),prompt:item.question,answer:item.correct_answer,options:shuffle(item.options),source:paper.title,subject:paper.subject,reference:`Correct answer: ${item.correct_answer}`}));
+  const minutes=Number($('#testTimeLimit').value);
+  activeGeneratedTest={questions,materialNames:[paper.title],remaining:minutes*60};renderActiveGeneratedTest();startGeneratedTimer();
 }
 
 const STOP_WORDS=new Set('about after again against also among because before being between both could does doing during each from further have having into itself more most other over same should some such than that their them then there these they this those through under until very what when where which while whom with would your were will been only upon however therefore thus chapter figure table source india indian'.split(' '));
@@ -260,6 +303,8 @@ document.addEventListener('click',async e=>{
   const rdel=e.target.closest('[data-revision-delete]');if(rdel){state.revisions=state.revisions.filter(r=>r.id!==rdel.dataset.revisionDelete);save();}
   const adel=e.target.closest('[data-answer-delete]');if(adel){state.answers=state.answers.filter(a=>a.id!==adel.dataset.answerDelete);save();}
   const materialDelete=e.target.closest('[data-material-delete]');if(materialDelete&&confirm('Remove this study material from the local test library? Existing test statistics will remain.')){await deleteMaterial(materialDelete.dataset.materialDelete);await refreshMaterials();toast('Study material removed.');}
+  const startPaper=e.target.closest('[data-start-paper]');if(startPaper)startNotebookPaper(startPaper.dataset.startPaper);
+  const paperDelete=e.target.closest('[data-paper-delete]');if(paperDelete&&confirm('Remove this NotebookLM paper? Existing test statistics will remain.')){await deletePaper(paperDelete.dataset.paperDelete);await refreshNotebookPapers();toast('NotebookLM paper removed.');}
   const review=e.target.closest('[data-test-review]');if(review){review.closest('.mock-row').classList.toggle('review-open');review.textContent=review.closest('.mock-row').classList.contains('review-open')?'Hide answers':'Review answers';}
   const filter=e.target.closest('[data-filter]');if(filter){activeFilter=filter.dataset.filter;$$('[data-filter]').forEach(b=>b.classList.toggle('active',b===filter));renderSyllabus();}
 });
@@ -281,6 +326,21 @@ $('#materialUploadForm').addEventListener('submit',async e=>{
   finally{button.disabled=false;button.textContent='Add to test library';}
 });
 
+$('#notebookPaperForm').addEventListener('submit',async e=>{
+  e.preventDefault();const file=$('#notebookPaperFile').files[0];if(!file)return;
+  const button=$('#notebookImportBtn');button.disabled=true;button.textContent='Importing paper…';
+  try{
+    if(file.size>4*1024*1024)throw new Error('NotebookLM paper files must be under 4 MB.');
+    const questions=parseNotebookPaper(await file.text());
+    const fallback=file.name.replace(/\.(md|txt|json)$/i,'').replace(/^Pasted markdown(?:\(\d+\))?$/i,'NotebookLM question paper');
+    const paper={id:crypto.randomUUID(),title:$('#notebookPaperTitle').value.trim()||fallback,subject:$('#notebookPaperSubject').value,questions,addedAt:new Date().toISOString()};
+    await putPaper(paper);e.target.reset();await refreshNotebookPapers();toast(`Imported ${questions.length} NotebookLM questions.`);
+  }catch(error){toast(error.message||'Could not import that NotebookLM paper.');}
+  finally{button.disabled=false;button.textContent='Import question paper';}
+});
+
+$('#notebookPaperSearch').addEventListener('input',e=>{notebookPaperQuery=e.target.value.trim().toLocaleLowerCase();renderNotebookPapers();});
+
 $('#randomTestForm').addEventListener('submit',async e=>{
   e.preventDefault();const ids=$$('input[name="test-material"]:checked').map(input=>input.value);if(!ids.length){toast('Select at least one study material.');return;}
   const selected=materialsCache.filter(m=>ids.includes(m.id));const requested=Number($('#testQuestionCount').value);const pool=makeQuestionPool(selected);
@@ -301,14 +361,15 @@ $('#timerToggle').addEventListener('click',()=>{if(timerId){clearInterval(timerI
 $('#timerReset').addEventListener('click',()=>{clearInterval(timerId);timerId=null;timerSeconds=timerTotal;drawTimer();$('#timerToggle').textContent='Start';});
 $$('[data-minutes]').forEach(b=>b.addEventListener('click',()=>{clearInterval(timerId);timerId=null;timerTotal=Number(b.dataset.minutes)*60;timerSeconds=timerTotal;$$('[data-minutes]').forEach(x=>x.classList.toggle('active',x===b));$('#timerToggle').textContent='Start';drawTimer();}));
 
-$('#resetBtn').addEventListener('click',async()=>{if(confirm('Clear every task, session, revision, test, uploaded material and syllabus tick? This cannot be undone.')){state=structuredClone(initial);localStorage.removeItem(KEY);await clearMaterials();materialsCache=[];renderMaterials();save();toast('Dashboard reset.');}});
+$('#resetBtn').addEventListener('click',async()=>{if(confirm('Clear every task, session, revision, test, uploaded material, NotebookLM paper and syllabus tick? This cannot be undone.')){state=structuredClone(initial);localStorage.removeItem(KEY);await Promise.all([clearMaterials(),clearPapers()]);materialsCache=[];notebookPapersCache=[];renderMaterials();renderNotebookPapers();save();toast('Dashboard reset.');}});
 
 const subjectOptions=SUBJECTS.map(s=>`<option value="${s.name}">${s.name}</option>`).join('');
-$('#logSubject').innerHTML=subjectOptions;$('#revisionSubject').innerHTML=subjectOptions;$('#materialSubject').innerHTML=subjectOptions;
+$('#logSubject').innerHTML=subjectOptions;$('#revisionSubject').innerHTML=subjectOptions;$('#materialSubject').innerHTML=subjectOptions;$('#notebookPaperSubject').innerHTML=subjectOptions;
 const now=new Date();$('#todayDate').textContent=now.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 const target=new Date('2028-05-28T00:00:00');const days=Math.max(0,Math.ceil((target-now)/86400000));$('#daysTarget').textContent=`${days.toLocaleString('en-IN')} days to provisional Prelims target`;
 renderAll();
 refreshMaterials();
+refreshNotebookPapers();
 
 // Optional WebMCP support: lets compatible assistants use the same visible workflows.
 function registerAgentTools(){

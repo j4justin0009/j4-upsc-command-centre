@@ -222,11 +222,51 @@ const ENGLISH_SET_01_EXPLANATIONS={
   'Choose the sentence with correct punctuation.':'A direct question ends with a question mark.'
 };
 
+const STUDY_TIPS={
+  'Vocabulary':'Revise the word, its meaning, an opposite, and one sentence.',
+  'Spelling':'Write the correct spelling three times, then recall it without looking.',
+  'Subject-verb agreement':'Revise singular subjects such as each, neither and he; then solve 10 error-spotting questions.',
+  'Prepositions and time expressions':'Practice since/for, on time/in time, and adjective + preposition pairs.',
+  'One-word substitution':'Make flashcards for the term and its definition.',
+  'Idioms':'Learn the meaning in context and use the idiom in a sentence.',
+  'Active and passive voice':'Convert five sentences between active and passive in the same tense.',
+  'Direct and indirect speech':'Practice changes in pronouns and tense after a reporting verb.',
+  'Conditionals':'Revise if + present, will + verb; solve five first-conditional questions.',
+  'Articles':'Practice a/an using the first sound of the next word.',
+  'Quantifiers':'Revise a little/little with uncountable nouns and a few/few with countable nouns.',
+  'Gerunds':'After look forward to, use a verb ending in -ing.',
+  'Punctuation':'Practice full stops, commas and question marks in short sentences.'
+};
+
+function questionTopic(test,row,q){
+  if(q?.topic)return q.topic;
+  const prompt=q?.question||'';
+  if(/correctly spelt/i.test(prompt))return 'Spelling';
+  if(/synonym|antonym/i.test(prompt))return 'Vocabulary';
+  if(/one-word substitute/i.test(prompt))return 'One-word substitution';
+  if(/meaning of|blue moon|break the ice/i.test(prompt))return 'Idioms';
+  if(/passive voice|active voice/i.test(prompt))return 'Active and passive voice';
+  if(/indirect speech/i.test(prompt))return 'Direct and indirect speech';
+  if(/Neither of|Each of|He do not/i.test(prompt))return 'Subject-verb agreement';
+  if(/If it rains/i.test(prompt))return 'Conditionals';
+  if(/honest man/i.test(prompt))return 'Articles';
+  if(/water in the bottle/i.test(prompt))return 'Quantifiers';
+  if(/look forward to/i.test(prompt))return 'Gerunds';
+  if(/punctuation/i.test(prompt))return 'Punctuation';
+  if(/since|2018|arrived|senior to|senior than/i.test(prompt))return 'Prepositions and time expressions';
+  const paperLabel=`${test.name||''} ${test.subject||''}`;
+  if(/CHSL English/i.test(paperLabel))return 'English practice';
+  if(/CHSL Quantitative/i.test(paperLabel))return 'Quantitative Aptitude';
+  if(/CHSL General Intelligence/i.test(paperLabel))return 'Reasoning';
+  if(/CHSL General Awareness/i.test(paperLabel))return 'General Awareness';
+  return q?'Review this question':'Review answer key';
+}
+
 function reviewRow(test,row,index){
   const q=reviewQuestion(test,row),skipped=!row.selected,status=skipped?'Skipped':row.correct?'Correct':'Incorrect';
   const options=q?.options?.length?`<div class="review-options">${q.options.map(option=>`<span class="${option===row.answer?'key':''} ${option===row.selected&&!row.correct?'picked':''}">${esc(option)}</span>`).join('')}</div>`:'';
   const note=q?.explanation||ENGLISH_SET_01_EXPLANATIONS[`${q?.question}|${row.answer}`]||ENGLISH_SET_01_EXPLANATIONS[q?.question]||(!row.question&&!q?'Question text was not saved in this older attempt. Keep the original imported paper to recover it when its correct answer is unique.':row.reference||'');
-  return `<article class="review-line ${skipped?'skipped':row.correct?'correct':'incorrect'}" data-review-status="${skipped?'skipped':row.correct?'correct':'incorrect'}"><b>Q${index+1} · ${status}${row.marked?' · Marked':''}</b><strong>${q?esc(q.question):'Question text unavailable'}</strong>${q?.topic?`<small>Topic: ${esc(q.topic)}</small>`:''}${options}<span>Your answer: ${skipped?'Not attempted':esc(row.selected)} · Correct answer: ${esc(row.answer)}</span>${note?`<small>${esc(note)}</small>`:''}</article>`;
+  return `<article class="review-line ${skipped?'skipped':row.correct?'correct':'incorrect'}" data-review-status="${skipped?'skipped':row.correct?'correct':'incorrect'}"><b>Q${index+1} · ${status}${row.marked?' · Marked':''}</b><strong>${q?esc(q.question):'Question text unavailable'}</strong><small>Learn: ${esc(questionTopic(test,row,q))}</small>${options}<span>Your answer: ${skipped?'Not attempted':esc(row.selected)} · Correct answer: ${esc(row.answer)}</span>${note?`<small>${esc(note)}</small>`:''}</article>`;
 }
 
 function renderTestHistory(test){
@@ -237,12 +277,26 @@ function renderTestHistory(test){
   return `<article class="mock-row material-result" data-test-id="${esc(test.id)}"><div><strong>${esc(test.name)}</strong><span>${esc(test.subject)} · ${test.correct} correct · ${wrong} wrong · ${skipped} skipped${marked?` · ${marked} marked`:''}${marks}</span><button class="review-toggle" type="button" data-test-review="${esc(test.id)}" aria-expanded="false">Analyse questions</button></div><div class="score-pill ${score>=70?'good':'needs-work'}">${score}% of attempted</div><div class="result-detail"><div class="review-summary">${test.correct}/${test.total} correct · ${wrong} wrong · ${skipped} skipped</div><div class="review-filters" aria-label="Filter reviewed questions"><button type="button" class="active" data-review-filter="all">All (${review.length})</button><button type="button" data-review-filter="incorrect">Wrong (${wrong})</button><button type="button" data-review-filter="skipped">Skipped (${skipped})</button></div>${review.map((row,i)=>reviewRow(test,row,i)).join('')}</div></article>`;
 }
 
+let selectedMistakeTestId=null;
+function renderMistakeFocus(){
+  const tests=state.materialTests||[],container=$('#mistakeFocusContent');
+  if(!tests.length){container.innerHTML='<p class="muted">Finish a question paper to see the exact questions you missed and their topics here.</p>';return;}
+  const test=tests.find(t=>t.id===selectedMistakeTestId)||tests[tests.length-1];
+  selectedMistakeTestId=test.id;
+  const missed=(test.review||[]).map((row,index)=>({row,index})).filter(x=>!x.row.correct);
+  const groups={};missed.forEach(({row})=>{const topic=questionTopic(test,row,reviewQuestion(test,row));groups[topic]=(groups[topic]||0)+1;});
+  const selector=`<label class="mistake-picker">Choose attempt <select id="mistakeTestPicker">${tests.slice().reverse().map(t=>`<option value="${esc(t.id)}" ${t.id===test.id?'selected':''}>${esc(t.name)} · ${esc(t.date||'')} · ${t.correct}/${t.total}</option>`).join('')}</select></label>`;
+  const topics=Object.entries(groups).sort((a,b)=>b[1]-a[1]).map(([topic,count])=>`<li><strong>${esc(topic)} · ${count} question${count===1?'':'s'}</strong><span>${esc(STUDY_TIPS[topic]||'Review the rule, then practise five similar questions.')}</span></li>`).join('');
+  container.innerHTML=selector+`<p class="mistake-count">${missed.length?`${missed.length} missed (${missed.filter(x=>x.row.selected).length} wrong, ${missed.filter(x=>!x.row.selected).length} skipped). Start with these:`:`Perfect attempt: no questions missed.`}</p>`+(topics?`<ul class="study-topics">${topics}</ul>`:'')+(missed.length?`<div class="mistake-questions">${missed.map(({row,index})=>reviewRow(test,row,index)).join('')}</div>`:'');
+}
+
 function renderMaterialTestStats(){
   const tests=state.materialTests||[],answered=tests.reduce((n,t)=>n+testAnswered(t),0),correct=tests.reduce((n,t)=>n+(Number(t.correct)||0),0),accuracy=answered?Math.round(correct/answered*100):null,best=tests.length?Math.max(...tests.map(testAccuracy)):null;
   $('#materialTestsTaken').textContent=tests.length;$('#materialAccuracy').textContent=accuracy===null?'—':accuracy+'%';$('#materialBest').textContent=best===null?'—':best+'%';$('#materialQuestions').textContent=answered;$('#generatedBestScore').textContent=best===null?'—':`Best ${best}%`;
   $('#generatedTestHistory').innerHTML=tests.length?tests.slice().reverse().map(renderTestHistory).join(''):'<div class="empty">Your generated test results will appear here.</div>';
   const groups={};tests.forEach(t=>{const key=t.subject||'Mixed';groups[key]??={correct:0,answered:0,tests:0};groups[key].correct+=Number(t.correct)||0;groups[key].answered+=testAnswered(t);groups[key].tests++;});
   $('#subjectTestBreakdown').innerHTML=Object.entries(groups).map(([subject,x])=>{const pct=x.answered?Math.round(x.correct/x.answered*100):0;return `<div class="subject-test-row"><strong>${esc(subject)}</strong><div class="bar"><i style="width:${pct}%"></i></div><span>${pct}% · ${x.tests} test${x.tests===1?'':'s'}</span></div>`;}).join('');
+  renderMistakeFocus();
 }
 
 function submitGeneratedTest(auto=false){
@@ -252,10 +306,12 @@ function submitGeneratedTest(auto=false){
   const review=activeGeneratedTest.questions.map((q,index)=>{const selected=$(`input[name="generated-${index}"]:checked`)?.value||'';return{question:q.prompt,options:q.options,answer:q.answer,selected,correct:Boolean(selected)&&selected.toLocaleLowerCase()===q.answer.toLocaleLowerCase(),marked:markedIndexes.has(index),reference:q.reference,explanation:q.topic?q.reference:'',topic:q.topic||''};});
   const correct=review.filter(r=>r.correct).length,total=review.length,unattempted=review.filter(r=>!r.selected).length,answered=total-unattempted,accuracy=answered?Math.round(correct/answered*100):0;
   const subjects=[...new Set(activeGeneratedTest.questions.map(q=>q.subject))];
-  state.materialTests.push({id:crypto.randomUUID(),date:isoDay(),name:activeGeneratedTest.materialNames.length===1?activeGeneratedTest.materialNames[0]:'Mixed material test',subject:subjects.length===1?subjects[0]:'Mixed',correct,total,unattempted,marked:markedIndexes.size,accuracy,review});
+  const testId=crypto.randomUUID();
+  state.materialTests.push({id:testId,date:isoDay(),name:activeGeneratedTest.materialNames.length===1?activeGeneratedTest.materialNames[0]:'Mixed material test',subject:subjects.length===1?subjects[0]:'Mixed',correct,total,unattempted,marked:markedIndexes.size,accuracy,review});
+  selectedMistakeTestId=testId;
   activeGeneratedTest=null;$('#activeTestPanel').hidden=true;save();
-  const latest=$('#generatedTestHistory .material-result');latest?.classList.add('review-open');latest?.querySelector('[data-test-review]')?.setAttribute('aria-expanded','true');latest?.scrollIntoView({behavior:'smooth',block:'start'});
-  toast(auto?`Time is up: ${correct}/${total} correct. Review below.`:`Test submitted: ${correct}/${total} correct. Review below.`);
+  $('#mistakeFocusPanel')?.scrollIntoView({behavior:'smooth',block:'start'});
+  toast(auto?`Time is up: ${correct}/${total} correct. See what to study next.`:`Test submitted: ${correct}/${total} correct. See what to study next.`);
 }
 
 function navigate(id){
@@ -422,6 +478,7 @@ $('#randomTestForm').addEventListener('submit',async e=>{
 });
 
 $('#activeTestForm').addEventListener('change',updateGeneratedProgress);
+$('#mistakeFocusPanel').addEventListener('change',e=>{if(e.target.id==='mistakeTestPicker'){selectedMistakeTestId=e.target.value;renderMistakeFocus();}});
 $('#activeTestForm').addEventListener('click',e=>{
   const mark=e.target.closest('[data-mark-review]');
   if(mark&&activeGeneratedTest){const index=Number(mark.dataset.markReview),marked=new Set(activeGeneratedTest.marked||[]);marked.has(index)?marked.delete(index):marked.add(index);activeGeneratedTest.marked=[...marked];updateGeneratedProgress();return;}

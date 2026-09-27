@@ -7,7 +7,7 @@
   <meta name="description" content="J4's local-first UPSC 2028 preparation dashboard.">
   <title>J4 UPSC Command Centre</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <link rel="stylesheet" href="styles.css?v=2.3">
+  <link rel="stylesheet" href="styles.css?v=2.4">
 </head>
 <body>
   <aside class="sidebar">
@@ -100,7 +100,7 @@
           <p class="eyebrow">Deep-work timer</p><h2>Focus sprint</h2>
           <div class="timer-ring"><span id="timerDisplay">50:00</span><small>FOCUS</small></div>
           <div class="timer-controls"><button class="primary" id="timerToggle">Start</button><button class="secondary" id="timerReset">Reset</button></div>
-          <div class="preset-row"><button data-minutes="25">25m</button><button class="active" data-minutes="50">50m</button><button data-minutes="90">90m</button></div>
+          <div class="preset-row"><button data-minutes="15">15m</button><button data-minutes="25">25m</button><button class="active" data-minutes="50">50m</button><button data-minutes="90">90m</button></div>
         </article>
         <article class="panel plan-panel">
           <div class="panel-head"><div><p class="eyebrow">Daily plan</p><h2>Maximum three priorities</h2></div><span id="taskProgress">0/0</span></div>
@@ -131,6 +131,19 @@
         <div><span>Questions answered</span><strong id="materialQuestions">0</strong></div>
       </div>
 
+      <article class="panel chsl-timer-panel" id="chslTimerPanel">
+        <div class="chsl-timer-copy">
+          <p class="eyebrow">CHSL speed drill</p>
+          <h2>15-minute test timer</h2>
+          <p class="muted">Open a CHSL question set, press start, and stop answering when the timer ends.</p>
+        </div>
+        <div class="chsl-timer-clock" id="chslTimerDisplay" role="timer" aria-live="polite">15:00</div>
+        <div class="chsl-timer-controls">
+          <button class="primary" id="chslTimerToggle" type="button">Start test</button>
+          <button class="secondary" id="chslTimerReset" type="button">Reset</button>
+        </div>
+      </article>
+
       <div class="grid test-builder-grid">
         <article class="panel material-upload-panel">
           <p class="eyebrow">Your source library</p><h2>Upload study material</h2>
@@ -148,7 +161,7 @@
           <p class="muted">Questions are generated from important statements in your selected materials. Each new attempt is shuffled.</p>
           <form id="randomTestForm" class="stack-form">
             <fieldset class="material-picker"><legend>Choose material</legend><div id="materialPicker"><div class="empty">Upload material first.</div></div></fieldset>
-            <div class="form-row"><label>Questions<select id="testQuestionCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></label><label>Time limit<select id="testTimeLimit"><option value="0">Untimed</option><option value="5">5 minutes</option><option value="10" selected>10 minutes</option><option value="20">20 minutes</option><option value="30">30 minutes</option></select></label></div>
+            <div class="form-row"><label>Questions<select id="testQuestionCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></label><label>Time limit<select id="testTimeLimit"><option value="0">Untimed</option><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15" selected>15 minutes</option><option value="20">20 minutes</option><option value="30">30 minutes</option></select></label></div>
             <button class="primary" type="submit" id="startRandomTest">Start random test</button>
           </form>
           <div class="privacy-note"><strong>Private by design</strong><span>Material text and test attempts stay in this browser’s storage.</span></div>
@@ -223,6 +236,6 @@
   </nav>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=2.5"></script>
+  <script src="app.js?v=2.6"></script>
 </body>
 </html>

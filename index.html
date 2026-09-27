@@ -7,7 +7,7 @@
   <meta name="description" content="J4's local-first UPSC 2028 preparation dashboard.">
   <title>J4 UPSC Command Centre</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <link rel="stylesheet" href="styles.css?v=2.7">
+  <link rel="stylesheet" href="styles.css?v=2.8">
 </head>
 <body>
   <aside class="sidebar">
@@ -131,6 +131,11 @@
         <div><span>Questions answered</span><strong id="materialQuestions">0</strong></div>
       </div>
 
+      <article class="panel mistake-focus-panel" id="mistakeFocusPanel">
+        <div class="panel-head"><div><p class="eyebrow">After every test</p><h2>What to study next</h2></div></div>
+        <div id="mistakeFocusContent" class="mistake-focus-content"><p class="muted">Finish a question paper to see the exact questions you missed and their topics here.</p></div>
+      </article>
+
       <article class="panel chsl-timer-panel" id="chslTimerPanel">
         <div class="chsl-timer-copy">
           <p class="eyebrow">CHSL speed drill</p>
@@ -236,6 +241,6 @@
   </nav>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=2.7"></script>
+  <script src="app.js?v=2.8"></script>
 </body>
 </html>

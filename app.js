@@ -376,6 +376,21 @@ $('#activeTestForm').addEventListener('click',e=>{
 $('#activeTestForm').addEventListener('submit',e=>{e.preventDefault();submitGeneratedTest(false);});
 $('#cancelGeneratedTest').addEventListener('click',()=>{if(!activeGeneratedTest||confirm('Cancel this test? The current answers will not be saved.')){clearInterval(generatedTimerId);generatedTimerId=null;activeGeneratedTest=null;$('#activeTestPanel').hidden=true;toast('Test cancelled.');}});
 
+const CHSL_TIMER_TOTAL=15*60;
+let chslTimerSeconds=CHSL_TIMER_TOTAL,chslTimerId=null,chslTimerDeadline=null,chslAudioContext=null;
+function drawChslTimer(){const m=Math.floor(chslTimerSeconds/60),s=chslTimerSeconds%60;$('#chslTimerDisplay').textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;}
+function chslTimerBeep(){try{chslAudioContext??=new(window.AudioContext||window.webkitAudioContext)();const oscillator=chslAudioContext.createOscillator(),gain=chslAudioContext.createGain();oscillator.frequency.value=880;gain.gain.setValueAtTime(.12,chslAudioContext.currentTime);gain.gain.exponentialRampToValueAtTime(.001,chslAudioContext.currentTime+.7);oscillator.connect(gain);gain.connect(chslAudioContext.destination);oscillator.start();oscillator.stop(chslAudioContext.currentTime+.7);}catch{}}
+function finishChslTimer(){clearInterval(chslTimerId);chslTimerId=null;chslTimerDeadline=null;chslTimerSeconds=0;drawChslTimer();$('#chslTimerPanel').classList.add('timer-finished');$('#chslTimerToggle').textContent='Start again';chslTimerBeep();toast('Time is up — stop the CHSL test and check your answers.');}
+function tickChslTimer(){chslTimerSeconds=Math.max(0,Math.ceil((chslTimerDeadline-Date.now())/1000));drawChslTimer();if(chslTimerSeconds<=0)finishChslTimer();}
+$('#chslTimerToggle').addEventListener('click',()=>{
+  if(chslTimerId){tickChslTimer();clearInterval(chslTimerId);chslTimerId=null;chslTimerDeadline=null;$('#chslTimerToggle').textContent='Resume';return;}
+  if(chslTimerSeconds<=0)chslTimerSeconds=CHSL_TIMER_TOTAL;
+  $('#chslTimerPanel').classList.remove('timer-finished');$('#chslTimerToggle').textContent='Pause';
+  try{chslAudioContext??=new(window.AudioContext||window.webkitAudioContext)();void chslAudioContext.resume();}catch{}
+  chslTimerDeadline=Date.now()+chslTimerSeconds*1000;chslTimerId=setInterval(tickChslTimer,250);drawChslTimer();
+});
+$('#chslTimerReset').addEventListener('click',()=>{clearInterval(chslTimerId);chslTimerId=null;chslTimerDeadline=null;chslTimerSeconds=CHSL_TIMER_TOTAL;$('#chslTimerPanel').classList.remove('timer-finished');$('#chslTimerToggle').textContent='Start test';drawChslTimer();});
+
 let timerSeconds=3000,timerTotal=3000,timerId=null;
 function drawTimer(){const m=Math.floor(timerSeconds/60),s=timerSeconds%60;$('#timerDisplay').textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;}
 $('#timerToggle').addEventListener('click',()=>{if(timerId){clearInterval(timerId);timerId=null;$('#timerToggle').textContent='Resume';return;}$('#timerToggle').textContent='Pause';timerId=setInterval(()=>{timerSeconds--;drawTimer();if(timerSeconds<=0){clearInterval(timerId);timerId=null;$('#timerToggle').textContent='Start';timerSeconds=timerTotal;drawTimer();toast('Focus sprint complete. Log what you finished.');}},1000);});

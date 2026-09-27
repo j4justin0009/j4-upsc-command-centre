@@ -9,6 +9,7 @@ A local-first UPSC CSE 2028 preparation dashboard.
 - Study-session logging and weekly consistency chart
 - Spaced-repetition revision queue
 - Mock-test score and accuracy analysis
+- Dedicated 15-minute CHSL speed-drill timer
 - Private PDF/TXT/Markdown study-material library with randomized tests
 - Generated-test accuracy, subject breakdowns and answer review
 - Mains answer-writing log and self-review checklist

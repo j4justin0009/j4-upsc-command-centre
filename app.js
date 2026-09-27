@@ -97,7 +97,7 @@ function parseNotebookPaper(raw){
     if(!question||options.length<2||!answer)throw new Error(`Question ${index+1} is missing its question, options or correct_answer.`);
     const exact=options.find(option=>option===answer)||options.find(option=>option.toLocaleLowerCase()===answer.toLocaleLowerCase());
     if(!exact)throw new Error(`Question ${index+1}'s correct_answer does not match any option.`);
-    return{question,options,correct_answer:exact};
+    return{question,options,correct_answer:exact,explanation:String(item.explanation||'').trim(),topic:String(item.topic||'').trim()};
   });
 }
 
@@ -108,13 +108,13 @@ function renderNotebookPapers(){
   list.innerHTML=filtered.length?filtered.map(p=>`<article class="notebook-paper-item"><strong>${esc(p.title)}</strong><span>${esc(p.subject)} · ${p.questions.length} questions · ${formatDate(p.addedAt.slice(0,10))}</span><div class="paper-actions"><button class="paper-start" type="button" data-start-paper="${p.id}">Take test</button><button class="icon-btn" type="button" data-paper-delete="${p.id}" aria-label="Delete ${esc(p.title)}">×</button></div></article>`).join(''):`<div class="empty">${notebookPapersCache.length?'No papers match your search.':'Imported NotebookLM papers will appear here.'}</div>`;
 }
 async function refreshNotebookPapers(){
-  try{notebookPapersCache=(await getPapers()).sort((a,b)=>b.addedAt.localeCompare(a.addedAt));renderNotebookPapers();}
+  try{notebookPapersCache=(await getPapers()).sort((a,b)=>b.addedAt.localeCompare(a.addedAt));renderNotebookPapers();renderMaterialTestStats();}
   catch{toast('Could not open the NotebookLM paper library.');}
 }
 
 function startNotebookPaper(id){
   const paper=notebookPapersCache.find(p=>p.id===id);if(!paper)return;
-  const questions=shuffle(paper.questions).map(item=>({id:crypto.randomUUID(),prompt:item.question,answer:item.correct_answer,options:shuffle(item.options),source:paper.title,subject:paper.subject,reference:`Correct answer: ${item.correct_answer}`}));
+  const questions=shuffle(paper.questions).map(item=>({id:crypto.randomUUID(),prompt:item.question,answer:item.correct_answer,options:shuffle(item.options),source:paper.title,subject:paper.subject,reference:item.explanation||`Correct answer: ${item.correct_answer}`,topic:item.topic||''}));
   const minutes=Number($('#testTimeLimit').value);
   activeGeneratedTest={questions,materialNames:[paper.title],remaining:minutes*60,marked:[]};renderActiveGeneratedTest();startGeneratedTimer();
 }
@@ -185,10 +185,62 @@ function testAccuracy(test){
   return answered?Math.round((Number(test.correct)||0)/answered*100):0;
 }
 
+function reviewQuestion(test,row){
+  if(row.question)return{question:row.question,options:row.options||[],topic:row.topic||'',explanation:row.explanation||''};
+  // Earlier attempts stored only the selected and correct answers. Recover a question
+  // only when a single question in the still-imported paper has that answer.
+  const paper=notebookPapersCache.find(p=>p.title===test.name);
+  const matches=paper?.questions.filter(q=>q.correct_answer===row.answer)||[];
+  return matches.length===1?{question:matches[0].question,options:matches[0].options,topic:matches[0].topic||'',explanation:matches[0].explanation||''}:null;
+}
+
+const ENGLISH_SET_01_EXPLANATIONS={
+  'Choose the synonym of "abundant".':'Abundant means present in a large quantity; plentiful has the same meaning.',
+  'Choose the antonym of "expand".':'Expand means grow larger; contract means become smaller.',
+  'Choose the correctly spelt word.':'Accommodation has two c letters and two m letters.',
+  'Fill in the blank: She has lived in Assam ___ 2018.':'Since introduces the starting point of a period that continues to the present.',
+  'Fill in the blank: Neither of the two answers ___ correct.':'Neither is singular here, so the verb is is.',
+  'Identify the error: He do not know the answer.':'With he in the present simple, use does not, not do not.',
+  'Choose the one-word substitute for "one who studies the stars and planets".':'An astronomer studies celestial objects such as stars and planets.',
+  'Choose the meaning of "once in a blue moon".':'The idiom means very rarely.',
+  'Choose the correct passive voice: "The chef prepared the meal."':'The simple past passive is was/were + past participle: was prepared.',
+  'Choose the correct indirect speech: He said, "I am tired."':'In reported speech after said, I becomes he and am normally shifts to was.',
+  'Fill in the blank: The train arrived ___ time.':'On time means at the scheduled time; in time means early enough for something.',
+  'Choose the antonym of "transparent".':'Opaque means light cannot pass through it clearly.',
+  'Choose the synonym of "brief".':'Brief means short in duration or length.',
+  'Fill in the blank: If it rains, we ___ at home.':'A real future condition uses if + present simple, followed by will + base verb.',
+  'Identify the error: Each of the players have a jersey.':'Each is singular, so use has a jersey.',
+  'Choose the correct sentence.':'Senior takes the preposition to in this comparison.',
+  'Choose the one-word substitute for "a person who cannot read or write".':'Illiterate means unable to read or write.',
+  'Choose the meaning of "break the ice".':'The idiom means to ease social awkwardness and start conversation.',
+  'Fill in the blank: He is ___ honest man.':'Honest begins with a vowel sound because h is silent, so use an.',
+  'Choose the correctly spelt word.|Separate':'Separate contains a after the r in the middle.',
+  'Choose the correct active voice: "The letter was written by Rina."':'The passive simple past was written becomes the active simple past wrote.',
+  'Fill in the blank: There is ___ water in the bottle; we can share it.':'Water is uncountable, and a little means some water is available.',
+  'Choose the antonym of "ancient".':'Ancient means very old; modern is its opposite.',
+  'Fill in the blank: I look forward to ___ you.':'The to in look forward to is a preposition and is followed by an -ing form.',
+  'Choose the sentence with correct punctuation.':'A direct question ends with a question mark.'
+};
+
+function reviewRow(test,row,index){
+  const q=reviewQuestion(test,row),skipped=!row.selected,status=skipped?'Skipped':row.correct?'Correct':'Incorrect';
+  const options=q?.options?.length?`<div class="review-options">${q.options.map(option=>`<span class="${option===row.answer?'key':''} ${option===row.selected&&!row.correct?'picked':''}">${esc(option)}</span>`).join('')}</div>`:'';
+  const note=q?.explanation||ENGLISH_SET_01_EXPLANATIONS[`${q?.question}|${row.answer}`]||ENGLISH_SET_01_EXPLANATIONS[q?.question]||(!row.question&&!q?'Question text was not saved in this older attempt. Keep the original imported paper to recover it when its correct answer is unique.':row.reference||'');
+  return `<article class="review-line ${skipped?'skipped':row.correct?'correct':'incorrect'}" data-review-status="${skipped?'skipped':row.correct?'correct':'incorrect'}"><b>Q${index+1} · ${status}${row.marked?' · Marked':''}</b><strong>${q?esc(q.question):'Question text unavailable'}</strong>${q?.topic?`<small>Topic: ${esc(q.topic)}</small>`:''}${options}<span>Your answer: ${skipped?'Not attempted':esc(row.selected)} · Correct answer: ${esc(row.answer)}</span>${note?`<small>${esc(note)}</small>`:''}</article>`;
+}
+
+function renderTestHistory(test){
+  const review=Array.isArray(test.review)?test.review:[],attempted=testAnswered(test),wrong=Math.max(0,attempted-test.correct),skipped=Number(test.unattempted)||0;
+  const isChsl=/(?:^|\s)CHSL(?:\b|_)/i.test(test.name||'')||/^CHSL /.test(test.subject||'');
+  const marks=isChsl?` · CHSL marks: ${(test.correct*2-wrong*.5).toFixed(1)} / ${test.total*2}`:'';
+  const score=testAccuracy(test),marked=Number(test.marked)||0;
+  return `<article class="mock-row material-result" data-test-id="${esc(test.id)}"><div><strong>${esc(test.name)}</strong><span>${esc(test.subject)} · ${test.correct} correct · ${wrong} wrong · ${skipped} skipped${marked?` · ${marked} marked`:''}${marks}</span><button class="review-toggle" type="button" data-test-review="${esc(test.id)}" aria-expanded="false">Analyse questions</button></div><div class="score-pill ${score>=70?'good':'needs-work'}">${score}% of attempted</div><div class="result-detail"><div class="review-summary">${test.correct}/${test.total} correct · ${wrong} wrong · ${skipped} skipped</div><div class="review-filters" aria-label="Filter reviewed questions"><button type="button" class="active" data-review-filter="all">All (${review.length})</button><button type="button" data-review-filter="incorrect">Wrong (${wrong})</button><button type="button" data-review-filter="skipped">Skipped (${skipped})</button></div>${review.map((row,i)=>reviewRow(test,row,i)).join('')}</div></article>`;
+}
+
 function renderMaterialTestStats(){
   const tests=state.materialTests||[],answered=tests.reduce((n,t)=>n+testAnswered(t),0),correct=tests.reduce((n,t)=>n+(Number(t.correct)||0),0),accuracy=answered?Math.round(correct/answered*100):null,best=tests.length?Math.max(...tests.map(testAccuracy)):null;
   $('#materialTestsTaken').textContent=tests.length;$('#materialAccuracy').textContent=accuracy===null?'—':accuracy+'%';$('#materialBest').textContent=best===null?'—':best+'%';$('#materialQuestions').textContent=answered;$('#generatedBestScore').textContent=best===null?'—':`Best ${best}%`;
-  $('#generatedTestHistory').innerHTML=tests.length?tests.slice().reverse().map(t=>{const score=testAccuracy(t),attempted=testAnswered(t),marked=Number(t.marked)||0;return `<article class="mock-row material-result"><div><strong>${esc(t.name)}</strong><span>${esc(t.subject)} · ${t.correct} correct of ${attempted} attempted · ${t.unattempted} unattempted${marked?` · ${marked} marked`:''}</span><button class="review-toggle" type="button" data-test-review="${t.id}">Review answers</button></div><div class="score-pill ${score>=70?'good':'needs-work'}">${score}%</div><div class="result-detail">${t.review.map((r,i)=>{const skipped=!r.selected,status=skipped?'Skipped':r.correct?'Correct':'Incorrect',symbol=skipped?'—':r.correct?'✓':'✗';return `<div class="review-line ${skipped?'skipped':r.correct?'correct':'incorrect'}"><b>${i+1}. ${symbol} ${status}${r.marked?' · Marked':''}</b><span>Your answer: ${skipped?'Not attempted':esc(r.selected)} · Correct answer: ${esc(r.answer)}</span><small>${esc(r.reference)}</small></div>`;}).join('')}</div></article>`;}).join(''):'<div class="empty">Your generated test results will appear here.</div>';
+  $('#generatedTestHistory').innerHTML=tests.length?tests.slice().reverse().map(renderTestHistory).join(''):'<div class="empty">Your generated test results will appear here.</div>';
   const groups={};tests.forEach(t=>{const key=t.subject||'Mixed';groups[key]??={correct:0,answered:0,tests:0};groups[key].correct+=Number(t.correct)||0;groups[key].answered+=testAnswered(t);groups[key].tests++;});
   $('#subjectTestBreakdown').innerHTML=Object.entries(groups).map(([subject,x])=>{const pct=x.answered?Math.round(x.correct/x.answered*100):0;return `<div class="subject-test-row"><strong>${esc(subject)}</strong><div class="bar"><i style="width:${pct}%"></i></div><span>${pct}% · ${x.tests} test${x.tests===1?'':'s'}</span></div>`;}).join('');
 }
@@ -197,11 +249,13 @@ function submitGeneratedTest(auto=false){
   if(!activeGeneratedTest)return;
   clearInterval(generatedTimerId);generatedTimerId=null;
   const markedIndexes=new Set(activeGeneratedTest.marked||[]);
-  const review=activeGeneratedTest.questions.map((q,index)=>{const selected=$(`input[name="generated-${index}"]:checked`)?.value||'';return{answer:q.answer,selected,correct:Boolean(selected)&&selected.toLocaleLowerCase()===q.answer.toLocaleLowerCase(),marked:markedIndexes.has(index),reference:q.reference};});
+  const review=activeGeneratedTest.questions.map((q,index)=>{const selected=$(`input[name="generated-${index}"]:checked`)?.value||'';return{question:q.prompt,options:q.options,answer:q.answer,selected,correct:Boolean(selected)&&selected.toLocaleLowerCase()===q.answer.toLocaleLowerCase(),marked:markedIndexes.has(index),reference:q.reference,explanation:q.topic?q.reference:'',topic:q.topic||''};});
   const correct=review.filter(r=>r.correct).length,total=review.length,unattempted=review.filter(r=>!r.selected).length,answered=total-unattempted,accuracy=answered?Math.round(correct/answered*100):0;
   const subjects=[...new Set(activeGeneratedTest.questions.map(q=>q.subject))];
   state.materialTests.push({id:crypto.randomUUID(),date:isoDay(),name:activeGeneratedTest.materialNames.length===1?activeGeneratedTest.materialNames[0]:'Mixed material test',subject:subjects.length===1?subjects[0]:'Mixed',correct,total,unattempted,marked:markedIndexes.size,accuracy,review});
-  activeGeneratedTest=null;$('#activeTestPanel').hidden=true;save();toast(auto?`Time is up: ${accuracy}% accuracy.`:`Test submitted: ${accuracy}% accuracy.`);
+  activeGeneratedTest=null;$('#activeTestPanel').hidden=true;save();
+  const latest=$('#generatedTestHistory .material-result');latest?.classList.add('review-open');latest?.querySelector('[data-test-review]')?.setAttribute('aria-expanded','true');latest?.scrollIntoView({behavior:'smooth',block:'start'});
+  toast(auto?`Time is up: ${correct}/${total} correct. Review below.`:`Test submitted: ${correct}/${total} correct. Review below.`);
 }
 
 function navigate(id){
@@ -320,7 +374,8 @@ document.addEventListener('click',async e=>{
   const materialDelete=e.target.closest('[data-material-delete]');if(materialDelete&&confirm('Remove this study material from the local test library? Existing test statistics will remain.')){await deleteMaterial(materialDelete.dataset.materialDelete);await refreshMaterials();toast('Study material removed.');}
   const startPaper=e.target.closest('[data-start-paper]');if(startPaper)startNotebookPaper(startPaper.dataset.startPaper);
   const paperDelete=e.target.closest('[data-paper-delete]');if(paperDelete&&confirm('Remove this NotebookLM paper? Existing test statistics will remain.')){await deletePaper(paperDelete.dataset.paperDelete);await refreshNotebookPapers();toast('NotebookLM paper removed.');}
-  const review=e.target.closest('[data-test-review]');if(review){review.closest('.mock-row').classList.toggle('review-open');review.textContent=review.closest('.mock-row').classList.contains('review-open')?'Hide answers':'Review answers';}
+  const review=e.target.closest('[data-test-review]');if(review){const open=review.closest('.mock-row').classList.toggle('review-open');review.textContent=open?'Hide analysis':'Analyse questions';review.setAttribute('aria-expanded',String(open));}
+  const reviewFilter=e.target.closest('[data-review-filter]');if(reviewFilter){const panel=reviewFilter.closest('.result-detail');$$('[data-review-filter]',panel).forEach(b=>b.classList.toggle('active',b===reviewFilter));$$('[data-review-status]',panel).forEach(row=>row.hidden=reviewFilter.dataset.reviewFilter!=='all'&&row.dataset.reviewStatus!==reviewFilter.dataset.reviewFilter);}
   const filter=e.target.closest('[data-filter]');if(filter){activeFilter=filter.dataset.filter;$$('[data-filter]').forEach(b=>b.classList.toggle('active',b===filter));renderSyllabus();}
 });
 
@@ -400,7 +455,9 @@ $$('[data-minutes]').forEach(b=>b.addEventListener('click',()=>{clearInterval(ti
 $('#resetBtn').addEventListener('click',async()=>{if(confirm('Clear every task, session, revision, test, uploaded material, NotebookLM paper and syllabus tick? This cannot be undone.')){state=structuredClone(initial);localStorage.removeItem(KEY);await Promise.all([clearMaterials(),clearPapers()]);materialsCache=[];notebookPapersCache=[];renderMaterials();renderNotebookPapers();save();toast('Dashboard reset.');}});
 
 const subjectOptions=SUBJECTS.map(s=>`<option value="${s.name}">${s.name}</option>`).join('');
-$('#logSubject').innerHTML=subjectOptions;$('#revisionSubject').innerHTML=subjectOptions;$('#materialSubject').innerHTML=subjectOptions;$('#notebookPaperSubject').innerHTML=subjectOptions;
+const chslSubjects=['CHSL English Language','CHSL General Intelligence','CHSL Quantitative Aptitude','CHSL General Awareness'];
+const paperSubjectOptions=subjectOptions+`<optgroup label="SSC CHSL">${chslSubjects.map(s=>`<option value="${s}">${s}</option>`).join('')}</optgroup>`;
+$('#logSubject').innerHTML=subjectOptions;$('#revisionSubject').innerHTML=subjectOptions;$('#materialSubject').innerHTML=paperSubjectOptions;$('#notebookPaperSubject').innerHTML=paperSubjectOptions;
 const now=new Date();$('#todayDate').textContent=now.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 const target=new Date('2028-05-28T00:00:00');const days=Math.max(0,Math.ceil((target-now)/86400000));$('#daysTarget').textContent=`${days.toLocaleString('en-IN')} days to provisional Prelims target`;
 renderAll();

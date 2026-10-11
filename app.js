@@ -16,11 +16,55 @@ const SUBJECTS = [
   {id:'soc2',name:'Sociology Optional II',stage:'mains',topics:['Perspectives on Indian society','Colonial impact','Rural structure','Caste system','Tribal communities','Class structure','Kinship in India','Religion in India','Social movements','Population dynamics','Challenges of social transformation']}
 ];
 
+// UPSC keeps its original IDs so existing syllabus ticks remain valid.
+// Other exams use their own IDs, even where their study topics overlap.
+const apscSharedSubjects=SUBJECTS.filter(s=>!['soc1','soc2','csat'].includes(s.id)).map(s=>({...s,id:`apsc-${s.id}`,name:s.id==='science'?'General Science':s.name,topics:s.id==='science'?['Everyday physics','Basic chemistry','Biology & human physiology','Health, nutrition & diseases','Scientific developments & applications']:[...s.topics]}));
+const chslEnglishTopics=['Grammar & error spotting','Fill in the blanks','Synonyms, homonyms & antonyms','Spelling','Idioms & phrases','One-word substitution','Sentence improvement','Active & passive voice','Direct & reported speech','Sentence and passage ordering','Cloze passages','Reading comprehension'];
+const chslReasoningTopics=['Verbal, number & figure analogies','Classification','Number, word & figure series','Coding & decoding','Symbolic and numerical operations','Venn diagrams & drawing inferences','Space orientation','Paper folding & punched-hole patterns','Embedded figures & figure completion','Critical thinking & problem solving','Emotional and social intelligence'];
+const chslMathTopics=['Whole numbers, decimals & fractions','Percentages, ratios & proportion','Square roots & averages','Simple and compound interest','Profit, loss & discounts','Partnership, mixtures & alligation','Time & work','Speed, time & distance','Algebra, surds & linear-equation graphs','Triangles, circles & geometry','2D and 3D mensuration','Trigonometry, heights & distances','Tables, histograms, bars & pie charts'];
+const chslAwarenessTopics=['Current events','History of India and neighbouring countries','Culture','Geography','Economy & public policy','Everyday science & scientific research'];
+const SYLLABI={
+  upsc:{
+    name:'UPSC CSE',subtitle:'Prelims + Mains + CSAT',description:'General Studies, CSAT, Essay and your Sociology optional.',
+    stages:{prelims:'Prelims',mains:'Mains',csat:'CSAT'},subjects:SUBJECTS,
+    sourceURL:'https://upsc.gov.in/examinations',sourceLabel:'UPSC examinations'
+  },
+  apsc:{
+    name:'APSC CCE',subtitle:'Prelims + aptitude + Assam Mains',description:'National General Studies with a dedicated Assam checklist and GS V paper.',
+    stages:{prelims:'Prelims',csat:'GS II / Aptitude',mains:'Mains'},
+    subjects:[
+      ...apscSharedSubjects.filter(s=>s.stage==='prelims'),
+      {id:'apsc-assam-prelims',name:'Assam General Studies',stage:'prelims',topics:['Ancient and medieval Assam','Ahom rule & colonial Assam','Assam in the freedom movement','Assamese literature, art & heritage','Communities, festivals & cultural traditions','Rivers, landforms & climate of Assam','National parks, biodiversity & conservation','Agriculture, tea, oil & the Assam economy','State governance & local institutions','Assam schemes & current affairs']},
+      {id:'apsc-csat',name:'GS II / Aptitude',stage:'csat',topics:['Reading comprehension','Interpersonal & communication skills','Logical reasoning & analytical ability','Decision making & problem solving','General mental ability','Basic numeracy (Class X)','Data interpretation (Class X)']},
+      ...apscSharedSubjects.filter(s=>s.stage==='mains'),
+      {id:'apsc-gs5',name:'GS V · General Subject on Assam',stage:'mains',topics:['History, heritage & culture of Assam','Geography & natural resources of Assam','State polity & governance','Social justice & welfare in Assam','Assam economy & development','Biodiversity & environmental issues','Security issues & border relations','Floods, erosion & disaster management','Assam-related answer-writing practice']}
+    ],sourceURL:'https://apsc.nic.in/',sourceLabel:'APSC official website'
+  },
+  chsl:{
+    name:'SSC CHSL',subtitle:'Tier I + Tier II + skill / typing',description:'Build the four core subjects, then prepare computer knowledge and your post’s typing or skill test.',
+    stages:{tier1:'Tier I',tier2:'Tier II',skill:'Skill / Typing'},
+    subjects:[
+      {id:'chsl-t1-english',name:'English Language',stage:'tier1',topics:chslEnglishTopics},
+      {id:'chsl-t1-reasoning',name:'General Intelligence',stage:'tier1',topics:chslReasoningTopics},
+      {id:'chsl-t1-quant',name:'Quantitative Aptitude',stage:'tier1',topics:chslMathTopics},
+      {id:'chsl-t1-awareness',name:'General Awareness',stage:'tier1',topics:chslAwarenessTopics},
+      {id:'chsl-t2-math',name:'Mathematical Abilities',stage:'tier2',topics:[...chslMathTopics,'Mean, median, mode & standard deviation','Simple probability']},
+      {id:'chsl-t2-reasoning',name:'Reasoning & General Intelligence',stage:'tier2',topics:[...chslReasoningTopics]},
+      {id:'chsl-t2-english',name:'English Language & Comprehension',stage:'tier2',topics:[...chslEnglishTopics]},
+      {id:'chsl-t2-awareness',name:'General Awareness',stage:'tier2',topics:[...chslAwarenessTopics]},
+      {id:'chsl-t2-computer',name:'Computer Knowledge',stage:'tier2',topics:['Computer organisation, CPU & input/output devices','Memory, storage & backup devices','Windows, files & keyboard shortcuts','MS Word, Excel & PowerPoint basics','Internet, web browsing & email','Networking & cyber security']},
+      {id:'chsl-skill',name:'Typing / Data Entry Practice',stage:'skill',topics:['Select the typing or DEO skill route for your post','Check the speed target in your SSC notice','Build accuracy with unfamiliar passages','Practise the time limit for your chosen route','Review errors and repeat timed practice']}
+    ],sourceURL:'https://ssc.gov.in/api/attachment/uploads/masterData/NoticeBoards/Notice_of_adv_chsl_2025.pdf',sourceLabel:'SSC CHSL 2025 syllabus reference'
+  }
+};
+
 const KEY = 'j4-upsc-command-centre-v1';
 const isoDay = (date = new Date()) => date.toISOString().slice(0,10);
-const initial = {topics:{},tasks:[],logs:[],revisions:[],mocks:[],materialTests:[],answers:[],startedAt:isoDay()};
+const initial = {syllabusExam:'upsc',topics:{},tasks:[],logs:[],revisions:[],mocks:[],materialTests:[],answers:[],startedAt:isoDay()};
 let state;
 try { state = {...initial, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; } catch { state = structuredClone(initial); }
+const selectedSyllabusExam=()=>Object.hasOwn(SYLLABI,state.syllabusExam)?state.syllabusExam:'upsc';
+const selectedSyllabus=()=>SYLLABI[selectedSyllabusExam()];
 const save = () => { localStorage.setItem(KEY, JSON.stringify(state)); renderAll(); };
 const $ = (s, el=document) => el.querySelector(s);
 const $$ = (s, el=document) => [...el.querySelectorAll(s)];
@@ -327,22 +371,31 @@ function topicStats(subject){
   return {done,total:subject.topics.length,pct:Math.round(done/subject.topics.length*100)};
 }
 
+function syllabusStats(subjects){
+  const total=subjects.reduce((n,s)=>n+s.topics.length,0);
+  const done=subjects.reduce((n,s)=>n+topicStats(s).done,0);
+  return{done,total,pct:total?Math.round(done/total*100):0};
+}
+
 function renderProgressCharts(overallPct){
+  const syllabus=selectedSyllabus();
   const overall=$('#overallDonut');
   overall.style.setProperty('--value',overallPct);
-  overall.setAttribute('aria-label',`Overall syllabus progress: ${overallPct} percent`);
+  overall.setAttribute('aria-label',`${syllabus.name} syllabus progress: ${overallPct} percent`);
   $('#overallDonutPct').textContent=overallPct+'%';
-  const colors={prelims:'#3767ff',mains:'#2ab889',csat:'#ff9344'};
-  $('#subjectDonuts').innerHTML=SUBJECTS.map(subject=>{
+  $('#subjectDonuts').setAttribute('aria-label',`${syllabus.name} subject-wise syllabus progress`);
+  const colors={prelims:'#3767ff',mains:'#2ab889',csat:'#ff9344',tier1:'#3767ff',tier2:'#2ab889',skill:'#ff9344'};
+  $('#subjectDonuts').innerHTML=syllabus.subjects.map(subject=>{
     const x=topicStats(subject);
     return `<div class="subject-donut-item" title="${subject.name}: ${x.done} of ${x.total} topics completed"><div class="donut" role="img" aria-label="${subject.name}: ${x.pct} percent complete" style="--value:${x.pct};--ring-color:${colors[subject.stage]}"><span class="mini-donut-value">${x.pct}%</span></div><div class="subject-donut-copy"><strong>${subject.name}</strong><span>${x.done}/${x.total} topics</span></div></div>`;
   }).join('');
 }
 
 function renderOverview(){
-  const total=SUBJECTS.reduce((n,s)=>n+s.topics.length,0);
-  const done=Object.values(state.topics).filter(Boolean).length;
-  const overallPct=Math.round(done/total*100);
+  const syllabus=selectedSyllabus();
+  const overallPct=syllabusStats(syllabus.subjects).pct;
+  $('#overviewSyllabusLabel').textContent=`${syllabus.name} syllabus`;
+  $('#progressExamLabel').textContent=`${syllabus.name} syllabus map`;
   $('#overallPct').textContent=overallPct+'%';
   renderProgressCharts(overallPct);
   const todayLogs=state.logs.filter(l=>l.date===isoDay());
@@ -384,8 +437,24 @@ function renderWeek(){
 
 let activeFilter='all';
 function renderSyllabus(){
-  const list=SUBJECTS.filter(s=>activeFilter==='all'||s.stage===activeFilter);
-  $('#syllabusGrid').innerHTML=list.map(s=>{const x=topicStats(s);return `<article class="subject-card"><div class="subject-card-head"><h3>${s.name}</h3><span class="tag">${s.stage}</span></div><div class="topic-list">${s.topics.map((t,i)=>`<label class="topic-row"><input type="checkbox" data-topic="${s.id}:${i}" ${state.topics[`${s.id}:${i}`]?'checked':''}><span>${t}</span></label>`).join('')}</div><div class="card-progress"><div class="bar"><i style="width:${x.pct}%"></i></div><span>${x.done}/${x.total}</span></div></article>`}).join('');
+  const exam=selectedSyllabusExam(),syllabus=selectedSyllabus();
+  if(activeFilter!=='all'&&!Object.hasOwn(syllabus.stages,activeFilter))activeFilter='all';
+  $('#syllabus').dataset.exam=exam;
+  $('#syllabusSubtitle').textContent=syllabus.subtitle;
+  $('#syllabusTitle').textContent=`${syllabus.name} syllabus`;
+  $('#syllabusDescription').textContent=syllabus.description;
+  $$('[data-syllabus-exam]').forEach(button=>{
+    const active=button.dataset.syllabusExam===exam;
+    button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));
+    $('.exam-progress',button).textContent=`${syllabusStats(SYLLABI[button.dataset.syllabusExam].subjects).pct}% complete`;
+  });
+  $('#syllabusFilters').innerHTML=[['all','All'],...Object.entries(syllabus.stages)].map(([id,label])=>`<button type="button" class="filter ${activeFilter===id?'active':''}" data-filter="${id}" aria-pressed="${activeFilter===id}">${esc(label)}</button>`).join('');
+  const stats=syllabusStats(syllabus.subjects);
+  $('#syllabusProgress').textContent=`${stats.done} of ${stats.total} study topics complete · ${stats.pct}%`;
+  $('#syllabusProgressBar').style.width=stats.pct+'%';
+  const source=$('#syllabusSource');source.href=syllabus.sourceURL;source.textContent=syllabus.sourceLabel;
+  const list=syllabus.subjects.filter(s=>activeFilter==='all'||s.stage===activeFilter);
+  $('#syllabusGrid').innerHTML=list.map(s=>{const x=topicStats(s);return `<article class="subject-card"><div class="subject-card-head"><h3>${esc(s.name)}</h3><span class="tag">${esc(syllabus.stages[s.stage])}</span></div><div class="topic-list">${s.topics.map((t,i)=>`<label class="topic-row"><input type="checkbox" data-topic="${s.id}:${i}" ${state.topics[`${s.id}:${i}`]?'checked':''}><span>${esc(t)}</span></label>`).join('')}</div><div class="card-progress"><div class="bar"><i style="width:${x.pct}%"></i></div><span>${x.done}/${x.total}</span></div></article>`}).join('');
 }
 
 function renderToday(){
@@ -421,6 +490,7 @@ function renderAll(){renderOverview();renderSyllabus();renderToday();renderRevis
 document.addEventListener('click',async e=>{
   const nav=e.target.closest('[data-view]');if(nav)navigate(nav.dataset.view);
   const jump=e.target.closest('[data-jump]');if(jump)navigate(jump.dataset.jump);
+  const exam=e.target.closest('[data-syllabus-exam]');if(exam&&Object.hasOwn(SYLLABI,exam.dataset.syllabusExam)){state.syllabusExam=exam.dataset.syllabusExam;activeFilter='all';save();}
   const topic=e.target.closest('[data-topic]');if(topic){state.topics[topic.dataset.topic]=topic.checked;save();}
   const toggle=e.target.closest('[data-task-toggle]');if(toggle){const t=state.tasks.find(x=>x.id===toggle.dataset.taskToggle);if(t)t.done=toggle.checked;save();}
   const del=e.target.closest('[data-task-delete]');if(del){state.tasks=state.tasks.filter(t=>t.id!==del.dataset.taskDelete);save();}
@@ -432,7 +502,7 @@ document.addEventListener('click',async e=>{
   const paperDelete=e.target.closest('[data-paper-delete]');if(paperDelete&&confirm('Remove this NotebookLM paper? Existing test statistics will remain.')){await deletePaper(paperDelete.dataset.paperDelete);await refreshNotebookPapers();toast('NotebookLM paper removed.');}
   const review=e.target.closest('[data-test-review]');if(review){const open=review.closest('.mock-row').classList.toggle('review-open');review.textContent=open?'Hide analysis':'Analyse questions';review.setAttribute('aria-expanded',String(open));}
   const reviewFilter=e.target.closest('[data-review-filter]');if(reviewFilter){const panel=reviewFilter.closest('.result-detail');$$('[data-review-filter]',panel).forEach(b=>b.classList.toggle('active',b===reviewFilter));$$('[data-review-status]',panel).forEach(row=>row.hidden=reviewFilter.dataset.reviewFilter!=='all'&&row.dataset.reviewStatus!==reviewFilter.dataset.reviewFilter);}
-  const filter=e.target.closest('[data-filter]');if(filter){activeFilter=filter.dataset.filter;$$('[data-filter]').forEach(b=>b.classList.toggle('active',b===filter));renderSyllabus();}
+  const filter=e.target.closest('#syllabusFilters [data-filter]');if(filter){activeFilter=filter.dataset.filter;renderSyllabus();}
 });
 
 $('#taskForm').addEventListener('submit',e=>{e.preventDefault();const todays=state.tasks.filter(t=>t.date===isoDay());if(todays.length>=3){toast('Keep focus: complete or remove a task first.');return;}state.tasks.push({id:crypto.randomUUID(),date:isoDay(),text:$('#taskInput').value.trim(),duration:Number($('#taskDuration').value),done:false});e.target.reset();save();toast('Priority added.');});
@@ -526,8 +596,9 @@ function registerAgentTools(){
   const context=document.modelContext;
   if(!context?.registerTool)return;
   const register=(tool)=>{try{void Promise.resolve(context.registerTool(tool)).catch(()=>{});}catch{}}
-  register({name:'read_preparation_progress',title:'Read preparation progress',description:'Read the current UPSC syllabus, study, revision, mock-test and answer-writing totals.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:false},execute:()=>{const total=SUBJECTS.reduce((n,s)=>n+s.topics.length,0),done=Object.values(state.topics).filter(Boolean).length;return{syllabus_percent:Math.round(done/total*100),study_minutes_today:state.logs.filter(l=>l.date===isoDay()).reduce((n,l)=>n+l.minutes,0),revisions_due:state.revisions.filter(r=>r.next<=isoDay()).length,mocks_completed:state.mocks.length,answers_written:state.answers.length};}});
+  register({name:'read_preparation_progress',title:'Read preparation progress',description:'Read the selected exam syllabus, study, revision, mock-test and answer-writing totals.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:false},execute:()=>({syllabus_exam:selectedSyllabusExam(),syllabus_percent:syllabusStats(selectedSyllabus().subjects).pct,study_minutes_today:state.logs.filter(l=>l.date===isoDay()).reduce((n,l)=>n+l.minutes,0),revisions_due:state.revisions.filter(r=>r.next<=isoDay()).length,mocks_completed:state.mocks.length,answers_written:state.answers.length})});
   register({name:'log_study_session',title:'Log study session',description:'Record a completed UPSC study session and update the visible dashboard.',inputSchema:{type:'object',properties:{subject:{type:'string',minLength:1,maxLength:80},minutes:{type:'integer',minimum:5,maximum:600},note:{type:'string',minLength:1,maxLength:100}},required:['subject','minutes','note'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute:(input)=>{if(!input||typeof input.subject!=='string'||typeof input.note!=='string'||!Number.isInteger(input.minutes)||input.minutes<5||input.minutes>600)throw new Error('Invalid study session');const entry={id:crypto.randomUUID(),date:isoDay(),subject:input.subject.trim(),minutes:input.minutes,note:input.note.trim()};if(!entry.subject||!entry.note)throw new Error('Subject and note are required');state.logs.push(entry);save();return{saved:true,date:entry.date,total_minutes_today:state.logs.filter(l=>l.date===isoDay()).reduce((n,l)=>n+l.minutes,0)};}});
   register({name:'add_revision_topic',title:'Add revision topic',description:'Add a UPSC topic to the spaced-repetition queue, due for its first review today.',inputSchema:{type:'object',properties:{topic:{type:'string',minLength:1,maxLength:100},subject:{type:'string',minLength:1,maxLength:80}},required:['topic','subject'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute:(input)=>{if(!input||typeof input.topic!=='string'||typeof input.subject!=='string'||!input.topic.trim()||!input.subject.trim())throw new Error('Topic and subject are required');state.revisions.push({id:crypto.randomUUID(),topic:input.topic.trim().slice(0,100),subject:input.subject.trim().slice(0,80),level:0,next:isoDay()});save();return{saved:true,due:isoDay(),revisions_due:state.revisions.filter(r=>r.next<=isoDay()).length};}});
 }
 registerAgentTools();
+
